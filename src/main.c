@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+
 #include <SDL2/SDL_scancode.h>
 
 #include "FreeRTOS.h"
@@ -19,6 +20,8 @@
 #include "TUM_Print.h"
 
 #include "AsyncIO.h"
+
+
 
 #define mainGENERIC_PRIORITY (tskIDLE_PRIORITY)
 #define mainGENERIC_STACK_SIZE ((unsigned short)2560)
@@ -71,6 +74,7 @@ static TaskHandle_t StateMachine = NULL;
 static TaskHandle_t BufferSwap = NULL;
 static TaskHandle_t DemoTask1 = NULL;
 static TaskHandle_t DemoTask2 = NULL;
+static TaskHandle_t DemoTask3 = NULL;
 static TaskHandle_t UDPDemoTask = NULL;
 static TaskHandle_t TCPDemoTask = NULL;
 static TaskHandle_t MQDemoTask = NULL;
@@ -88,6 +92,29 @@ typedef struct buttons_buffer {
 } buttons_buffer_t;
 
 static buttons_buffer_t buttons = { 0 };
+
+#define middle_X 320
+#define middle_Y 240
+
+#define triangle_top_X 320
+#define triangle_top_Y 220
+#define triangle_high 40
+#define triangle_width 40
+
+void TriangleDraw(coord_t *triangle)
+{
+    
+   
+    triangle[0].x=triangle_top_X - middle_X +tumEventGetMouseX();
+    triangle[0].y=triangle_top_Y - middle_Y +tumEventGetMouseY();
+    triangle[1].x=triangle_top_X-triangle_width/2 - middle_X+tumEventGetMouseX();
+    triangle[1].y=triangle_top_Y+triangle_high - middle_Y +tumEventGetMouseY();
+    triangle[2].x=triangle_top_X+triangle_width/2- middle_X +tumEventGetMouseX();
+    triangle[2].y=triangle_top_Y+triangle_high - middle_Y +tumEventGetMouseY();
+
+   
+
+}
 
 void checkDraw(unsigned char status, const char *msg)
 {
@@ -374,6 +401,140 @@ void vDrawButtonText(void)
         checkDraw(tumDrawText(str, 10, DEFAULT_FONT_SIZE * 3.5, Black),
                   __FUNCTION__);
     }
+
+    
+}
+typedef struct Rotate{
+
+    signed short posx;
+    signed short posy;
+    int r;
+    double angle;
+
+}Rotate_t;
+
+void RotatingFiguresInit(Rotate_t *rotate)
+{
+    (*rotate).posx=0;
+    (*rotate).posy =0;
+    
+    (*rotate).r=100;
+    (*rotate).angle=0;
+}
+void RotatingFiguresDraw(Rotate_t *rotate)
+{
+    
+    (*rotate).angle=(*rotate).angle+1;
+    if((*rotate).angle==360)
+    {
+        (*rotate).angle=0;
+    }
+    (*rotate).posx=(*rotate).r*cos((*rotate).angle*2*3.14/360);
+    (*rotate).posy=(*rotate).r*sin((*rotate).angle*2*3.14/360);
+
+    checkDraw(tumDrawCircle((*rotate).posx +tumEventGetMouseX(),(*rotate).posy+tumEventGetMouseY(),triangle_high/2,Red),
+                        __FUNCTION__);
+    tumDrawFilledBox((*rotate).posx +tumEventGetMouseX(),(*rotate).posy+tumEventGetMouseY(),triangle_high,triangle_high,TUMBlue); 
+}
+
+
+void Mouse(void)
+{
+    static char str[100] = { 0 };
+    sprintf(str, "Axis 1: %5d | Axis 2: %5d", tumEventGetMouseX(),
+            tumEventGetMouseY());
+    checkDraw(tumDrawText(str, 10+tumEventGetMouseX(), DEFAULT_FONT_SIZE * -4 + tumEventGetMouseY(), Black),
+                  __FUNCTION__);
+
+}
+typedef struct buttonCounter{
+    int ai;
+    int bi;
+    int ci;
+    int di;
+    int previous_state_a;
+    int previous_state_b;
+    int previous_state_c;
+    int previous_state_d;
+
+}buttonCounter_t;
+
+void buttonCounterInit(buttonCounter_t *counter)
+{
+    (*counter).previous_state_a=0;
+    (*counter).ai=0;
+    (*counter).previous_state_b=0;
+    (*counter).bi=0;
+    (*counter).previous_state_c=0;
+    (*counter).ci=0;
+    (*counter).previous_state_d=0;
+    (*counter).di=0;
+}
+
+void DrawButtonCount( buttonCounter_t *counter)
+{
+
+    static char str[100] = { 0 };
+    //counter.previous_state;
+
+    if (xSemaphoreTake(buttons.lock, 0) == pdTRUE) {
+
+
+        if(buttons.buttons[KEYCODE(A)]==1)
+        {
+        
+            if((*counter).previous_state_a!=1)
+            {
+                (*counter).previous_state_a=1;
+                (*counter).ai=(*counter).ai+1;
+            }
+        } else (*counter).previous_state_a=0;
+       
+       if(buttons.buttons[KEYCODE(B)]==1)
+        {
+            if((*counter).previous_state_b!=1)
+            {
+                (*counter).previous_state_b=1;
+                (*counter).bi=(*counter).bi+1;
+            }
+        } else (*counter).previous_state_b=0;
+       
+       if(buttons.buttons[KEYCODE(C)]==1)
+        {
+            if((*counter).previous_state_c!=1)
+            {
+                (*counter).previous_state_c=1;
+                (*counter).ci=(*counter).ci+1;
+            }
+        } else (*counter).previous_state_c=0;
+       
+       if(buttons.buttons[KEYCODE(D)]==1)
+        {
+            if((*counter).previous_state_d!=1)
+            {
+                (*counter).previous_state_d=1;
+                (*counter).di=(*counter).di+1;
+            }
+        } else (*counter).previous_state_d=0;
+       
+        if(tumEventGetMouseRight()==1)
+        {
+            (*counter).ai=0;
+            (*counter).bi=0;
+            (*counter).ci=0;
+            (*counter).di=0;
+        }
+        sprintf(str, "A: %d | B: %d | C: %d | D: %d",
+                (*counter).ai,
+                (*counter).bi,
+                (*counter).ci,
+                (*counter).di);
+        
+        xSemaphoreGive(buttons.lock);
+        checkDraw(tumDrawText(str, 10+tumEventGetMouseX(), DEFAULT_FONT_SIZE * -3 +tumEventGetMouseY(), Black),
+                  __FUNCTION__);
+        
+    }
 }
 
 static int vCheckStateInput(void)
@@ -505,7 +666,7 @@ void vTCPDemoTask(void *pvParameters)
     }
 }
 
-void vDemoTask1(void *pvParameters)
+void vDemoTask3(void *pvParameters)
 {
     image_handle_t ball_spritesheet =
         tumDrawLoadImage("../resources/images/ball_spritesheet.png");
@@ -668,11 +829,75 @@ void vDemoTask2(void *pvParameters)
     }
 }
 
+void vDemoTask1(void *pvParameters)
+{
+    
+    buttonCounter_t counter;
+    buttonCounterInit(&counter);
+
+    Rotate_t rotate;
+
+    coord_t triangle[3];
+
+    RotatingFiguresInit(&rotate);
+
+    TickType_t xLastWakeTime, prevWakeTime;
+    xLastWakeTime = xTaskGetTickCount();
+    prevWakeTime = xLastWakeTime;
+
+    
+    while (1) {
+        if (DrawSignal)
+            if (xSemaphoreTake(DrawSignal, portMAX_DELAY) ==
+                pdTRUE) {
+                tumEventFetchEvents(FETCH_EVENT_BLOCK |
+                                    FETCH_EVENT_NO_GL_CHECK);
+                xLastWakeTime = xTaskGetTickCount();
+
+
+                xSemaphoreTake(ScreenLock, portMAX_DELAY);
+                // Clear screen
+                checkDraw(tumDrawClear(White), __FUNCTION__);
+
+
+                // Exercise 2.1
+                TriangleDraw(triangle);
+                tumDrawTriangle(triangle,Black);
+
+                tumDrawText("this text is under rotating figures!",tumEventGetMouseX(), triangle_high/2 +tumEventGetMouseY(),Black);
+                tumDrawText("Wuhuuuu",rotate.angle,-triangle_high + tumEventGetMouseY(),Black);
+
+
+                RotatingFiguresDraw(&rotate);
+               
+
+                 //Exercise 2.2
+                xGetButtonInput(); // Update global input
+                DrawButtonCount(&counter);
+
+
+                // Exercise 2.3
+                Mouse();
+
+                xSemaphoreGive(ScreenLock);
+
+
+                // Keep track of when task last ran so that you know how many ticks
+                //(in our case miliseconds) have passed so that the balls position
+                // can be updated appropriatley
+                prevWakeTime = xLastWakeTime;
+            }
+    }
+}
+
 #define PRINT_TASK_ERROR(task) PRINT_ERROR("Failed to print task ##task");
 
 int main(int argc, char *argv[])
 {
     char *bin_folder_path = tumUtilGetBinFolderPath(argv[0]);
+   
+   
+
 
     prints("Initializing: ");
 
@@ -756,6 +981,7 @@ int main(int argc, char *argv[])
     }
 
     /** Demo Tasks */
+    
     if (xTaskCreate(vDemoTask1, "DemoTask1", mainGENERIC_STACK_SIZE * 2,
                     NULL, mainGENERIC_PRIORITY, &DemoTask1) != pdPASS) {
         PRINT_TASK_ERROR("DemoTask1");
@@ -766,6 +992,20 @@ int main(int argc, char *argv[])
         PRINT_TASK_ERROR("DemoTask2");
         goto err_demotask2;
     }
+    
+    //tumDrawTriangle(&triangle,Red);
+   // tumDrawCircle(100, 100, 20,Black);
+    //tumDrawFilledBox(280,80,40, 40,TUMBlue);
+  /*
+    posx=100;
+    while(posx<300)
+    {
+         tumDrawCircle(posx-1, 100, 20,White);
+         tumDrawCircle(posx, 100, 20,Black);
+         posx=posx+1;
+    }
+*/
+             
 
     /** SOCKETS */
     xTaskCreate(vUDPDemoTask, "UDPTask", mainGENERIC_STACK_SIZE * 2, NULL,
@@ -781,10 +1021,12 @@ int main(int argc, char *argv[])
 
     vTaskSuspend(DemoTask1);
     vTaskSuspend(DemoTask2);
+    vTaskSuspend(DemoTask3);
 
     tumFUtilPrintTaskStateList();
 
     vTaskStartScheduler();
+
 
     return EXIT_SUCCESS;
 
