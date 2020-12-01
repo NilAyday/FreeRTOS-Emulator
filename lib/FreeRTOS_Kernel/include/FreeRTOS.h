@@ -245,7 +245,7 @@ extern "C" {
 #endif
 
 #ifndef configUSE_TIMERS
-#define configUSE_TIMERS 0
+#define configUSE_TIMERS 1
 #endif
 
 #ifndef configUSE_COUNTING_SEMAPHORES
@@ -283,15 +283,18 @@ extern "C" {
 #if configUSE_TIMERS == 1
 
 #ifndef configTIMER_TASK_PRIORITY
-#error If configUSE_TIMERS is set to 1 then configTIMER_TASK_PRIORITY must also be defined.
+#define configTIMER_TASK_PRIORITY 1
+//#error If configUSE_TIMERS is set to 1 then configTIMER_TASK_PRIORITY must also be defined.
 #endif /* configTIMER_TASK_PRIORITY */
 
 #ifndef configTIMER_QUEUE_LENGTH
-#error If configUSE_TIMERS is set to 1 then configTIMER_QUEUE_LENGTH must also be defined.
+#define configTIMER_QUEUE_LENGTH 1
+//#error If configUSE_TIMERS is set to 1 then configTIMER_QUEUE_LENGTH must also be defined.
 #endif /* configTIMER_QUEUE_LENGTH */
 
 #ifndef configTIMER_TASK_STACK_DEPTH
-#error If configUSE_TIMERS is set to 1 then configTIMER_TASK_STACK_DEPTH must also be defined.
+#define configTIMER_TASK_STACK_DEPTH 128
+//#error If configUSE_TIMERS is set to 1 then configTIMER_TASK_STACK_DEPTH must also be defined.
 #endif /* configTIMER_TASK_STACK_DEPTH */
 
 #endif /* configUSE_TIMERS */
@@ -774,7 +777,7 @@ task that attempted the write. */
 
 #ifndef configSUPPORT_STATIC_ALLOCATION
 /* Defaults to 0 for backward compatibility. */
-#define configSUPPORT_STATIC_ALLOCATION 0
+#define configSUPPORT_STATIC_ALLOCATION 1
 #endif
 
 #ifndef configSUPPORT_DYNAMIC_ALLOCATION

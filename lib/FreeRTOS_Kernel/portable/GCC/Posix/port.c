@@ -69,6 +69,7 @@
 /* Scheduler includes. */
 #include "FreeRTOS.h"
 #include "task.h"
+
 /*-----------------------------------------------------------*/
 
 #define MAX_NUMBER_OF_TASKS (_POSIX_THREAD_THREADS_MAX)
@@ -406,6 +407,8 @@ void vPortSystemTickHandler(int sig)
                 prvGetThreadHandle(xTaskGetCurrentTaskHandle());
             /* Tick Increment. */
             xTaskIncrementTick();
+           // printf("*****************Tick************************\n");
+           
 
             /* Select Next Task. */
 #if (configUSE_PREEMPTION == 1)
