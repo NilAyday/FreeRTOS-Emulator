@@ -94,6 +94,18 @@ Displays the result itself.
 
 If you press the Button 'E', you can see the first exercise again.
 
- 
+Questions asked in the Exercises
+
+How does the mouse guarantee thread-safe functionality?
+It uses Semaphores.
+
+What is the kernel tick? 
+The time unit of the kernel based on the hardware timer.
+
+What is a tickless kernel?
+It enables the kernel to work without a regular timer tick.
+
+What happens if the task stack size is too low?
+A stack overflow can happen which leads to a corrupt program.
 
 <a href="https://www.buymeacoffee.com/xmyWYwD" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/lato-green.png" alt="Buy Me A Coffee" style="height: 11px !important;" ></a>
