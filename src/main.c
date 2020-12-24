@@ -25,6 +25,9 @@
 
 static TaskHandle_t DemoTask = NULL;
 
+static TaskHandle_t HandleTaskY= NULL;
+QueueHandle_t YQueue =NULL;
+
 typedef struct buttons_buffer {
     unsigned char buttons[SDL_NUM_SCANCODES];
     SemaphoreHandle_t lock;
@@ -42,12 +45,31 @@ void xGetButtonInput(void)
 
 #define KEYCODE(CHAR) SDL_SCANCODE_##CHAR
 
+void TaskY(void *pvParameters)
+{
+    int y;
+    printf("yeni task \n");
+    while(1)
+    {
+        xQueueReceive(YQueue,&y,portMAX_DELAY);
+        y=y+20;
+        xQueueSend(YQueue,&y,portMAX_DELAY);
+        vTaskDelay((TickType_t)300);
+    }
+}
+
 void vDemoTask(void *pvParameters)
 {
     // structure to store time retrieved from Linux kernel
     static struct timespec the_time;
     static char our_time_string[100];
     static int our_time_strings_width = 0;
+
+    xTaskCreate(TaskY, "TaskY", mainGENERIC_STACK_SIZE, NULL,mainGENERIC_PRIORITY-3, &HandleTaskY);
+    YQueue=xQueueCreate(10,sizeof(int));
+    
+    int x=0;
+    int y;
 
     // Needed such that Gfx library knows which thread controlls drawing
     // Only one thread can call tumDrawUpdateScreen while and thread can call
@@ -77,10 +99,27 @@ void vDemoTask(void *pvParameters)
                       &the_time); // Get kernel real time
 
         // Format our string into our char array
-        sprintf(our_time_string,
-                "There has been %ld seconds since the Epoch. Press Q to quit",
-                (long int)the_time.tv_sec);
+        //sprintf(our_time_string,
+        //        "There has been %ld seconds since the Epoch. Press Q to quit",
+         //       (long int)the_time.tv_sec);
 
+        tumDrawBox(200,20,200,400,Black);
+        xQueueReceive(YQueue, &y,0);
+
+        if (xSemaphoreTake(buttons.lock, 0) == pdTRUE) {
+            
+            
+            if (buttons.buttons[79]) { 
+                if(x<180)
+                   x=x+20;
+            }
+            if (buttons.buttons[80]) { 
+                if(x>0)
+                   x=x-20;
+            }
+            xSemaphoreGive(buttons.lock);
+        }
+        tumDrawFilledBox(x+200,y+20,20,20,Red);
         // Get the width of the string on the screen so we can center it
         // Returns 0 if width was successfully obtained
         if (!tumGetTextSize((char *)our_time_string,
@@ -94,7 +133,7 @@ void vDemoTask(void *pvParameters)
         tumDrawUpdateScreen(); // Refresh the screen to draw string
 
         // Basic sleep of 1000 milliseconds
-        vTaskDelay((TickType_t)1000);
+        vTaskDelay((TickType_t)100);
     }
 }
 
