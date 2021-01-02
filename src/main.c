@@ -23,6 +23,20 @@
 
 #include "AsyncIO.h"
 
+
+#define STATE_QUEUE_LENGTH 1
+
+#define STATE_COUNT 2
+
+#define STATE_ONE 0
+#define STATE_TWO 1
+#define STATE_THREE 2
+
+#define NEXT_TASK 0
+#define PREV_TASK 1
+
+#define STARTING_STATE STATE_ONE
+
 #define mainGENERIC_PRIORITY (tskIDLE_PRIORITY)
 #define mainGENERIC_STACK_SIZE ((unsigned short)2560)
 #define STATE_DEBOUNCE_DELAY 300
@@ -31,8 +45,14 @@ int level;
 int total_line;
 int score;
 
+//const unsigned char next_state_signal = NEXT_TASK;
+const unsigned char prev_state_signal = PREV_TASK;
+
+static TaskHandle_t StateMachine = NULL;
+static TaskHandle_t BufferSwap = NULL;
 
 static TaskHandle_t DemoTask = NULL;
+static TaskHandle_t MenuTask = NULL;
 static TaskHandle_t HandleTask= NULL;
 static TaskHandle_t HandleChangeX= NULL;
 static TaskHandle_t HandleChangeY= NULL;
@@ -44,6 +64,10 @@ QueueHandle_t YQueue=NULL;
 
 static SemaphoreHandle_t SignalX=NULL;
 static SemaphoreHandle_t syncSignal=NULL;
+
+static QueueHandle_t StateQueue = NULL;
+static SemaphoreHandle_t DrawSignal = NULL;
+static SemaphoreHandle_t ScreenLock = NULL;
 
 TimerHandle_t myTimer= NULL;
 
@@ -59,6 +83,9 @@ struct my_struct_X{
 struct my_struct_X my_struct_instance_X={.lock_X=NULL};
 
 int y;
+int x=5;
+    //int y=0;
+int px=5;
 
 struct my_Y{
     int condition_Y2;
@@ -122,6 +149,386 @@ void xGetButtonInput(void)
 }
 
 #define KEYCODE(CHAR) SDL_SCANCODE_##CHAR
+
+void control_elements()
+{
+    if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
+    {
+        for(int i=0; i<6;i++)
+        {
+            for(int j=0;j<5;j++)
+            {
+                if(my_struct_instance_shape.Shape[i][j]==1)
+                {
+                    if(my_struct_instance_shape.Shape[i][j+1]!=1)
+                        my_struct_instance_shape.Shape[i][j+1]=3;
+
+                    if(my_struct_instance_shape.Shape[i+1][j]==0)
+                    {
+                        my_struct_instance_shape.Shape[i+1][j]=4;
+                    }
+                        
+                    if(my_struct_instance_shape.Shape[i-1][j]==0)
+                    {
+                        my_struct_instance_shape.Shape[i-1][j]=2;
+                    }
+
+                }
+            }
+        }
+        /*
+        for(int i=0; i<6;i++)
+        {
+            for(int j=0;j<5;j++)
+            {
+                if(my_struct_instance_shape.Shape[i][j]==3)
+                {
+
+                    if(my_struct_instance_shape.Shape[i+1][j]==0 & my_struct_instance_shape.Shape[i+1][j-1]!=3)
+                    {
+                        my_struct_instance_shape.Shape[i+1][j]=4;
+                    }
+                        
+                    if(my_struct_instance_shape.Shape[i-1][j]==0 & my_struct_instance_shape.Shape[i-1][j-1]!=3)
+                    {
+                        my_struct_instance_shape.Shape[i-1][j]=2;
+                    }
+
+                }
+                
+            }
+        }*/
+    
+    for(int j=0;j<5;j++)
+        {
+            printf ( "\n" ); 
+            for(int i=0; i<6;i++)
+            {
+               printf ( "%d " ,my_struct_instance_shape.Shape[i][j] );    
+            }
+     }
+     printf ( "\n" );
+    xSemaphoreGive(my_struct_instance_shape.lock_shape);
+    }
+}
+
+void Tetrimino()
+{
+    xSemaphoreTake(my_struct_instance_tetri.lock_tetri,portMAX_DELAY);
+    int Tetrimino= my_struct_instance_tetri.Tetri_number;
+    xSemaphoreGive(my_struct_instance_tetri.lock_tetri);
+    
+    if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
+    {   
+        for(int i=0; i<6;i++)
+        {
+            for(int j=0; j<5; j++)
+            {
+                my_struct_instance_shape.Shape[i][j]=0;
+            }
+        }
+        switch(Tetrimino)
+        {
+            case 1 : //T
+                my_struct_instance_shape.Shape[1][2]=1;
+                my_struct_instance_shape.Shape[2][2]=1;
+                my_struct_instance_shape.Shape[3][2]=1;
+                my_struct_instance_shape.Shape[2][3]=1;
+                break;
+            case 0 : //J
+                my_struct_instance_shape.Shape[1][2]=1;
+                my_struct_instance_shape.Shape[2][2]=1;
+                my_struct_instance_shape.Shape[3][2]=1;
+                my_struct_instance_shape.Shape[3][3]=1;
+                break;
+            case 2 : //Z
+                my_struct_instance_shape.Shape[1][2]=1;
+                my_struct_instance_shape.Shape[2][2]=1;
+                my_struct_instance_shape.Shape[2][3]=1;
+                my_struct_instance_shape.Shape[3][3]=1;
+                break;
+            case 3 : //O
+                my_struct_instance_shape.Shape[1][2]=1;
+                my_struct_instance_shape.Shape[1][3]=1;
+                my_struct_instance_shape.Shape[2][2]=1;
+                my_struct_instance_shape.Shape[2][3]=1;
+                break;
+            case 4 : //S
+                my_struct_instance_shape.Shape[1][3]=1;
+                my_struct_instance_shape.Shape[2][2]=1;
+                my_struct_instance_shape.Shape[2][3]=1;
+                my_struct_instance_shape.Shape[3][2]=1;
+                break;
+            case 5 : //L
+                my_struct_instance_shape.Shape[1][2]=1;
+                my_struct_instance_shape.Shape[1][3]=1;
+                my_struct_instance_shape.Shape[2][2]=1;
+                my_struct_instance_shape.Shape[3][2]=1;
+                break;
+            case 6 : //I
+                my_struct_instance_shape.Shape[1][2]=1;
+                my_struct_instance_shape.Shape[3][2]=1;
+                my_struct_instance_shape.Shape[2][2]=1;
+                my_struct_instance_shape.Shape[4][2]=1;
+                break;
+            
+            default:
+                  break;
+        }
+        xSemaphoreGive(my_struct_instance_shape.lock_shape);
+        control_elements();
+        
+    }
+
+}
+
+void Grid()
+{
+    if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
+        {
+           for(int i=0; i<21;i++) 
+           {
+               my_struct_instance_grid.Grid[0][i]=1;
+               my_struct_instance_grid.Grid[11][i]=1;
+           }
+           for(int i=0; i<12; i++)
+           {
+               my_struct_instance_grid.Grid[i][20]=1;
+           }
+           
+        xSemaphoreGive(my_struct_instance_grid.lock_grid);
+        }
+    
+    
+}
+void reset()
+{
+    level=5;
+    total_line=0;
+    score=0;
+
+    y=0;
+    x=5;
+
+    if(xSemaphoreTake(my_struct_instance_frame.lock_frame,portMAX_DELAY)==pdTRUE)
+    {
+        if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
+        {   
+            for(int i=0; i<12; i++)
+            {   
+                for(int j=0; j<21; j++)
+                {
+                    my_struct_instance_frame.Frame[i][j]= 0;
+                    my_struct_instance_grid.Grid[i][j]= 0;
+                }
+            }
+        xSemaphoreGive(my_struct_instance_grid.lock_grid);
+        }
+          
+            
+    xSemaphoreGive(my_struct_instance_frame.lock_frame);
+    }
+    Grid(); 
+    
+    if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
+    { 
+        for(int i=0; i<6;i++)
+        {
+            for(int j=0; j<5;j++)
+            {
+                my_struct_instance_shape.Shape[i][j]=0;    
+            }
+        }  
+
+    xSemaphoreGive(my_struct_instance_shape.lock_shape);
+    } 
+    xSemaphoreTake(my_struct_instance_tetri.lock_tetri,portMAX_DELAY);
+    my_struct_instance_tetri.Tetri_number=0;
+    xSemaphoreGive(my_struct_instance_tetri.lock_tetri);
+    Tetrimino();
+}
+
+void changeState(volatile unsigned char *state, unsigned char forwards)
+{
+     switch (forwards) {
+        case NEXT_TASK:
+            if (*state == STATE_COUNT - 1) {
+                *state = 0;
+            }
+            else {
+                (*state)++;
+            }
+            break;
+        case PREV_TASK:
+            if (*state == 0) {
+                *state = STATE_COUNT - 1;
+            }
+            else {
+                (*state)--;
+            }
+            break;
+        default:
+            break;
+    }
+}
+void basicSequentialStateMachine(void *pvParameters)
+{
+    unsigned char current_state = STARTING_STATE; // Default state
+    unsigned char state_changed =
+        1; // Only re-evaluate state if it has changed
+    unsigned char input = 0;
+
+    const int state_change_period = STATE_DEBOUNCE_DELAY;
+
+    
+    TickType_t last_change = xTaskGetTickCount();
+
+    while (1) {
+        if (state_changed) {
+            goto initial_state;
+        }
+        printf("1\n");
+        // Handle state machine input
+        if (StateQueue)
+            if (xQueueReceive(StateQueue, &input, portMAX_DELAY) ==
+                pdTRUE)
+                if (xTaskGetTickCount() - last_change >
+                    state_change_period) {
+                    //changeState(&current_state, input);
+                    state_changed = 1;
+                    last_change = xTaskGetTickCount();
+                }
+
+initial_state:
+        // Handle current state
+        if (state_changed) {
+            switch (input) {
+                case STATE_ONE:
+                    if (DemoTask) {
+                        vTaskSuspend(DemoTask);
+                    }
+                    if (MenuTask) {
+                        vTaskResume(MenuTask);
+                     }   
+                    break;
+                case 'O':
+                    if (MenuTask) {
+                        vTaskSuspend(MenuTask);
+                    }
+                    if(DemoTask){
+                        vTaskResume(DemoTask);
+                        vTaskResume(HandleTask);
+                        vTaskResume(HandleUpdateX);
+                        vTaskResume(HandleUpdateY);
+                    }
+                    break;
+                case 'E':
+                   if (DemoTask) {
+                        vTaskSuspend(DemoTask);
+                        vTaskSuspend(HandleTask);
+                        vTaskSuspend(HandleUpdateX);
+                        vTaskSuspend(HandleUpdateY);
+                        reset();
+                    }
+                    if (MenuTask) {
+                        vTaskResume(MenuTask);
+                    }   
+                    break;
+                case 'R':
+                    if(DemoTask) {
+                        vTaskSuspend(DemoTask);
+                        reset();
+                        vTaskResume(DemoTask);
+                    }
+                case 'P':
+                    if(DemoTask) {
+                        vTaskSuspend(DemoTask);
+                    }
+
+                default:
+                    break;
+            }
+            state_changed = 0;
+        }
+    }
+}
+void vSwapBuffers(void *pvParameters)
+{
+    TickType_t xLastWakeTime;
+    xLastWakeTime = xTaskGetTickCount();
+    const TickType_t frameratePeriod = 20;
+
+    tumDrawBindThread(); // Setup Rendering handle with correct GL context
+
+    while (1) {
+        if (xSemaphoreTake(ScreenLock, portMAX_DELAY) == pdTRUE) {
+            tumDrawUpdateScreen();
+            tumEventFetchEvents(FETCH_EVENT_BLOCK);
+            xSemaphoreGive(ScreenLock);
+            xSemaphoreGive(DrawSignal);
+            vTaskDelayUntil(&xLastWakeTime,
+                            pdMS_TO_TICKS(frameratePeriod));
+        }
+    }
+}
+static int vCheckStateInputMenu(void)
+{
+    unsigned char next_state_signal;
+    if (xSemaphoreTake(buttons.lock, 0) == pdTRUE) {
+        if (buttons.buttons[KEYCODE(O)]) {
+            buttons.buttons[KEYCODE(O)] = 0;
+            if (StateQueue) {
+                xSemaphoreGive(buttons.lock);
+                next_state_signal='O';
+                xQueueSend(StateQueue, &next_state_signal, 0);
+                return 0;
+            }
+            return -1;
+        }
+        xSemaphoreGive(buttons.lock);
+    }
+
+    return 0;
+}
+static int vCheckStateInputTask(void)
+{
+    unsigned char next_state_signal;
+    if (xSemaphoreTake(buttons.lock, 0) == pdTRUE) {
+        if (buttons.buttons[KEYCODE(E)]) {
+            buttons.buttons[KEYCODE(E)] = 0;
+            if (StateQueue) {
+                xSemaphoreGive(buttons.lock);
+                next_state_signal='E';
+                xQueueSend(StateQueue, &next_state_signal, 0);
+                return 0;
+            }
+            return -1;
+        }
+        if (buttons.buttons[KEYCODE(R)]) {
+            buttons.buttons[KEYCODE(R)] = 0;
+            if (StateQueue) {
+                xSemaphoreGive(buttons.lock);
+                next_state_signal='R';
+                xQueueSend(StateQueue, &next_state_signal, 0);
+                return 0;
+            }
+            return -1;
+        }
+        if (buttons.buttons[KEYCODE(P)]) {
+            buttons.buttons[KEYCODE(P)] = 0;
+            if (StateQueue) {
+                xSemaphoreGive(buttons.lock);
+                next_state_signal='P';
+                xQueueSend(StateQueue, &next_state_signal, 0);
+                return 0;
+            }
+            return -1;
+        }
+        xSemaphoreGive(buttons.lock);
+    }
+
+    return 0;
+}
 
 void move_tetrimino(int x, int y, int px, int py)
 {
@@ -258,156 +665,10 @@ void move_tetrimino(int x, int y, int px, int py)
 }
 
 
-void control_elements()
-{
-    if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
-    {
-        for(int i=0; i<6;i++)
-        {
-            for(int j=0;j<5;j++)
-            {
-                if(my_struct_instance_shape.Shape[i][j]==1)
-                {
-                    if(my_struct_instance_shape.Shape[i][j+1]!=1)
-                        my_struct_instance_shape.Shape[i][j+1]=3;
 
-                    if(my_struct_instance_shape.Shape[i+1][j]==0)
-                    {
-                        my_struct_instance_shape.Shape[i+1][j]=4;
-                    }
-                        
-                    if(my_struct_instance_shape.Shape[i-1][j]==0)
-                    {
-                        my_struct_instance_shape.Shape[i-1][j]=2;
-                    }
 
-                }
-            }
-        }
-        /*
-        for(int i=0; i<6;i++)
-        {
-            for(int j=0;j<5;j++)
-            {
-                if(my_struct_instance_shape.Shape[i][j]==3)
-                {
 
-                    if(my_struct_instance_shape.Shape[i+1][j]==0 & my_struct_instance_shape.Shape[i+1][j-1]!=3)
-                    {
-                        my_struct_instance_shape.Shape[i+1][j]=4;
-                    }
-                        
-                    if(my_struct_instance_shape.Shape[i-1][j]==0 & my_struct_instance_shape.Shape[i-1][j-1]!=3)
-                    {
-                        my_struct_instance_shape.Shape[i-1][j]=2;
-                    }
 
-                }
-                
-            }
-        }*/
-    
-    for(int j=0;j<5;j++)
-        {
-            printf ( "\n" ); 
-            for(int i=0; i<6;i++)
-            {
-               printf ( "%d " ,my_struct_instance_shape.Shape[i][j] );    
-            }
-     }
-     printf ( "\n" );
-    xSemaphoreGive(my_struct_instance_shape.lock_shape);
-    }
-}
-void Tetrimino()
-{
-    xSemaphoreTake(my_struct_instance_tetri.lock_tetri,portMAX_DELAY);
-    int Tetrimino= my_struct_instance_tetri.Tetri_number;
-    xSemaphoreGive(my_struct_instance_tetri.lock_tetri);
-    
-    if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
-    {   
-        for(int i=0; i<6;i++)
-        {
-            for(int j=0; j<5; j++)
-            {
-                my_struct_instance_shape.Shape[i][j]=0;
-            }
-        }
-        switch(Tetrimino)
-        {
-            case 1 : //T
-                my_struct_instance_shape.Shape[1][2]=1;
-                my_struct_instance_shape.Shape[2][2]=1;
-                my_struct_instance_shape.Shape[3][2]=1;
-                my_struct_instance_shape.Shape[2][3]=1;
-                break;
-            case 0 : //J
-                my_struct_instance_shape.Shape[1][2]=1;
-                my_struct_instance_shape.Shape[2][2]=1;
-                my_struct_instance_shape.Shape[3][2]=1;
-                my_struct_instance_shape.Shape[3][3]=1;
-                break;
-            case 2 : //Z
-                my_struct_instance_shape.Shape[1][2]=1;
-                my_struct_instance_shape.Shape[2][2]=1;
-                my_struct_instance_shape.Shape[2][3]=1;
-                my_struct_instance_shape.Shape[3][3]=1;
-                break;
-            case 3 : //O
-                my_struct_instance_shape.Shape[1][2]=1;
-                my_struct_instance_shape.Shape[1][3]=1;
-                my_struct_instance_shape.Shape[2][2]=1;
-                my_struct_instance_shape.Shape[2][3]=1;
-                break;
-            case 4 : //S
-                my_struct_instance_shape.Shape[1][3]=1;
-                my_struct_instance_shape.Shape[2][2]=1;
-                my_struct_instance_shape.Shape[2][3]=1;
-                my_struct_instance_shape.Shape[3][2]=1;
-                break;
-            case 5 : //L
-                my_struct_instance_shape.Shape[1][2]=1;
-                my_struct_instance_shape.Shape[1][3]=1;
-                my_struct_instance_shape.Shape[2][2]=1;
-                my_struct_instance_shape.Shape[3][2]=1;
-                break;
-            case 6 : //I
-                my_struct_instance_shape.Shape[1][2]=1;
-                my_struct_instance_shape.Shape[3][2]=1;
-                my_struct_instance_shape.Shape[2][2]=1;
-                my_struct_instance_shape.Shape[4][2]=1;
-                break;
-            
-            default:
-                  break;
-        }
-        xSemaphoreGive(my_struct_instance_shape.lock_shape);
-                control_elements();
-        
-    }
-
-}
-
-void Grid()
-{
-    if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
-        {
-           for(int i=0; i<21;i++) 
-           {
-               my_struct_instance_grid.Grid[0][i]=1;
-               my_struct_instance_grid.Grid[11][i]=1;
-           }
-           for(int i=0; i<12; i++)
-           {
-               my_struct_instance_grid.Grid[i][20]=1;
-           }
-           
-        xSemaphoreGive(my_struct_instance_grid.lock_grid);
-        }
-    
-    
-}
 void rotate_I()
 {
     if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
@@ -640,9 +901,7 @@ void TimerY(TimerHandle_t xTimer)
     //xQueueSend(YQueue,&py,portMAX_DELAY);
 
 }*/
-int x=5;
-    //int y=0;
-int px=5;
+
 int delay;
 
 void UpdateY()
@@ -911,21 +1170,37 @@ void Task(void *pvParameters)
        
     }
 }
+void vMenuTask(void *pvParameters)
+{
+     
 
+    while(1)
+    {
+        if (DrawSignal)
+            if (xSemaphoreTake(DrawSignal, portMAX_DELAY) ==
+                pdTRUE) {
+                tumEventFetchEvents(FETCH_EVENT_BLOCK |
+                                    FETCH_EVENT_NO_GL_CHECK);
+                xGetButtonInput(); // Update global input
+                xSemaphoreTake(ScreenLock, portMAX_DELAY);
+
+                tumDrawClear(White); // Clear screen
+       // printf("menü\n");
+            
+                vTaskDelay((TickType_t)100);
+
+                xSemaphoreGive(ScreenLock);
+                vCheckStateInputMenu();
+            }
+         
+    }
+}
 void vDemoTask(void *pvParameters)
 {
     char str[16];
     total_line=0;
     level=5;
     score=0;
-
-    // structure to store time retrieved from Linux kernel
-    static struct timespec the_time;
-    static char our_time_string[100];
-    static int our_time_strings_width = 0;
-
-    
-    
     
     
     Que_cond_Y= xQueueCreate(1,sizeof(int));
@@ -956,7 +1231,7 @@ void vDemoTask(void *pvParameters)
     // Only one thread can call tumDrawUpdateScreen while and thread can call
     // the drawing functions to draw objects. This is a limitation of the SDL
     // backend.
-    tumDrawBindThread();
+    //tumDrawBindThread();
 
     for(int i=12;i<20;i++)
     {
@@ -969,63 +1244,46 @@ void vDemoTask(void *pvParameters)
     
 
     while (1) {
-        tumEventFetchEvents(FETCH_EVENT_NONBLOCK); // Query events backend for new events, ie. button presses
-        xGetButtonInput(); // Update global input
+        if (DrawSignal)
+            if (xSemaphoreTake(DrawSignal, portMAX_DELAY) ==
+                pdTRUE) {
+                tumEventFetchEvents(FETCH_EVENT_BLOCK |
+                                    FETCH_EVENT_NO_GL_CHECK);
+        
+                xGetButtonInput(); // Update global input
+                xSemaphoreTake(ScreenLock, portMAX_DELAY);
 
-        // `buttons` is a global shared variable and as such needs to be
-        // guarded with a mutex, mutex must be obtained before accessing the
-        // resource and given back when you're finished. If the mutex is not
-        // given back then no other task can access the reseource.
-       /* if (xSemaphoreTake(buttons.lock, 0) == pdTRUE) {
-            if (buttons.buttons[KEYCODE(
-                                    Q)]) { // Equiv to SDL_SCANCODE_Q
-                exit(EXIT_SUCCESS);
-            }
-            xSemaphoreGive(buttons.lock);
-        }*/
-
-        //tumDrawClear(White); // Clear screen
-
-        clock_gettime(CLOCK_REALTIME,
-                      &the_time); // Get kernel real time
-
-        // Format our string into our char array
-        //sprintf(our_time_string,
-        //        "There has been %ld seconds since the Epoch. Press Q to quit",
-         //       (long int)the_time.tv_sec);
-
-        //tumDrawBox(199,19,203,403,Black);
-
-        if(xSemaphoreTake(my_struct_instance_frame.lock_frame,portMAX_DELAY)==pdTRUE)
-        {
-            for(int i=0;i<12;i++)
-            {
-                for(int j=0;j<21;j++)
+       
+        
+                if(xSemaphoreTake(my_struct_instance_frame.lock_frame,portMAX_DELAY)==pdTRUE)
                 {
-                    if(my_struct_instance_frame.Frame[i][j]==1)
-                        tumDrawFilledBox(20*i+200,20*j+20,20,20,Red);
-                    else
-                        tumDrawFilledBox(20*i+200,20*j+20,20,20,White);
-                
+                    for(int i=0;i<12;i++)
+                    {
+                        for(int j=0;j<21;j++)
+                        {
+                            if(my_struct_instance_frame.Frame[i][j]==1)
+                                tumDrawFilledBox(20*i+200,20*j+20,20,20,Red);
+                            else
+                                tumDrawFilledBox(20*i+200,20*j+20,20,20,White);
+                        }
+                    }
+                xSemaphoreGive(my_struct_instance_frame.lock_frame);
                 }
-            }
-            xSemaphoreGive(my_struct_instance_frame.lock_frame);
-       }
-       if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
-       {
-            for(int i=0;i<12;i++)
-            {
-                for(int j=0;j<21;j++)
+                if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
                 {
-                    if(my_struct_instance_grid.Grid[i][j]==1)
-                        tumDrawFilledBox(20*i+200,20*j+20,20,20,Red);
+                    for(int i=0;i<12;i++)
+                    {
+                        for(int j=0;j<21;j++)
+                        {
+                            if(my_struct_instance_grid.Grid[i][j]==1)
+                                tumDrawFilledBox(20*i+200,20*j+20,20,20,Red);
                     //else
                         //tumDrawFilledBox(20*i+200,20*j+20,20,20,White);
                 
+                        }
+                    }
+                xSemaphoreGive(my_struct_instance_grid.lock_grid);
                 }
-            }
-            xSemaphoreGive(my_struct_instance_grid.lock_grid);
-       }
        /*
        for(int i=12;i<19;i++)
         {
@@ -1035,43 +1293,40 @@ void vDemoTask(void *pvParameters)
             }
             
         } */
-        for(int i=13;i<19;i++)
-        {
-            tumDrawFilledBox(20*i+200,20*2+20,20,20,White);
-            tumDrawFilledBox(20*i+200,20*5+20,20,20,White);
-            tumDrawFilledBox(20*i+200,20*8+20,20,20,White);
-            for(int j=15; j<20;j++)
-            {
-                tumDrawFilledBox(20*i+200,20*j+20,20,20,White);
-            }
-        }
+                for(int i=13;i<19;i++)
+                {
+                    tumDrawFilledBox(20*i+200,20*2+20,20,20,White);
+                    tumDrawFilledBox(20*i+200,20*5+20,20,20,White);
+                    tumDrawFilledBox(20*i+200,20*8+20,20,20,White);
+                    for(int j=15; j<20;j++)
+                    {
+                        tumDrawFilledBox(20*i+200,20*j+20,20,20,White);
+                    }       
+                }
 
         
-        sprintf(str, "LINES: %d", total_line);
-        tumDrawText(str, 20*13+210,20*2+20,Black);
+                sprintf(str, "LINES: %d", total_line);
+                tumDrawText(str, 20*13+210,20*2+20,Black);
 
-        sprintf(str, "LEVEL: %d", level);
-        tumDrawText(str, 20*13+210,20*5+20,Black);
+                sprintf(str, "LEVEL: %d", level);
+                tumDrawText(str, 20*13+210,20*5+20,Black);
 
-        sprintf(str, "SCORE: %d", score);
-        tumDrawText(str, 20*13+210,20*8+20,Black);
+                sprintf(str, "SCORE: %d", score);
+                tumDrawText(str, 20*13+210,20*8+20,Black);
         
-       // tumDrawFilledBox(20*x+200,20*y+20,20,20,Red);
-        // Get the width of the string on the screen so we can center it
-        // Returns 0 if width was successfully obtained
-        if (!tumGetTextSize((char *)our_time_string,
-                            &our_time_strings_width, NULL))
-            tumDrawText(our_time_string,
-                        SCREEN_WIDTH / 2 -
-                        our_time_strings_width / 2,
-                        SCREEN_HEIGHT / 2 - DEFAULT_FONT_SIZE / 2,
-                        TUMBlue);
+    
+                
 
-        tumDrawUpdateScreen(); // Refresh the screen to draw string
+                //tumDrawUpdateScreen(); // Refresh the screen to draw string
 
         // Basic sleep of 1000 milliseconds
-        //
-        vTaskDelay((TickType_t)100);
+                xSemaphoreGive(ScreenLock);
+
+                // Get input and check for state change
+                vCheckStateInputTask();
+        
+                vTaskDelay((TickType_t)100);
+            }
     }
 }
 
@@ -1102,17 +1357,66 @@ int main(int argc, char *argv[])
         goto err_buttons_lock;
     }
 
+    DrawSignal = xSemaphoreCreateBinary(); // Screen buffer locking
+    if (!DrawSignal) {
+        PRINT_ERROR("Failed to create draw signal");
+        goto err_draw_signal;
+    }
+
+    ScreenLock = xSemaphoreCreateMutex();
+    if (!ScreenLock) {
+        PRINT_ERROR("Failed to create screen lock");
+        goto err_screen_lock;
+    }
+
+    StateQueue = xQueueCreate(STATE_QUEUE_LENGTH, sizeof(unsigned char));
+    if (!StateQueue) {
+        PRINT_ERROR("Could not open state queue");
+        goto err_state_queue;
+    }
+
+    if (xTaskCreate(basicSequentialStateMachine, "StateMachine",
+                    mainGENERIC_STACK_SIZE * 2, NULL,
+                    configMAX_PRIORITIES - 1, StateMachine) != pdPASS) {
+        //PRINT_TASK_ERROR("StateMachine");
+        goto err_statemachine;
+    }
+    if (xTaskCreate(vSwapBuffers, "BufferSwapTask",
+                    mainGENERIC_STACK_SIZE * 2, NULL, configMAX_PRIORITIES,
+                    BufferSwap) != pdPASS) {
+        //PRINT_TASK_ERROR("BufferSwapTask");
+        goto err_bufferswap;
+    }
+
     if (xTaskCreate(vDemoTask, "DemoTask", mainGENERIC_STACK_SIZE * 2, NULL,
-                    mainGENERIC_PRIORITY+3, &DemoTask) != pdPASS) {
+                    mainGENERIC_PRIORITY, &DemoTask) != pdPASS) {
         goto err_demotask;
     }
 
+    if (xTaskCreate(vMenuTask, "MenuTask", mainGENERIC_STACK_SIZE * 2, NULL,
+                    mainGENERIC_PRIORITY, &MenuTask) != pdPASS) {
+        goto err_menutask;
+    }
 
+    vTaskSuspend(DemoTask);
+    vTaskSuspend(MenuTask);
     vTaskStartScheduler();
 
     return EXIT_SUCCESS;
 
+err_menutask:
+    vTaskDelete(DemoTask);
 err_demotask:
+    vTaskDelete(BufferSwap);
+err_bufferswap:
+    vTaskDelete(StateMachine);
+err_statemachine:
+    vQueueDelete(StateQueue);
+err_state_queue:
+    vSemaphoreDelete(ScreenLock);
+err_screen_lock:
+    vSemaphoreDelete(DrawSignal);
+err_draw_signal:
     vSemaphoreDelete(buttons.lock);
 err_buttons_lock:
     tumSoundExit();
