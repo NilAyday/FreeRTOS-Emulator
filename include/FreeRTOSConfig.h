@@ -90,6 +90,11 @@
 #define configMAX_PRIORITIES        ( 10 )
 #define configMAX_CO_ROUTINE_PRIORITIES ( 2 )
 
+
+#define configUSE_TIMERS 1
+#define configTIMER_TASK_PRIORITY 1
+#define configTIMER_QUEUE_LENGTH 1
+#define configTIMER_TASK_STACK_DEPTH 128
 /* Set the following definitions to 1 to include the API function, or zero
  to exclude the API function. */
 
@@ -102,6 +107,8 @@
 #define INCLUDE_vTaskDelay                  1
 #define INCLUDE_uxTaskGetStackHighWaterMark 0 /* Do not use this option on the PC port. */
 #define INCLUDE_xTaskGetSchedulerState      1
+
+//#define configTIMER_TASK_STACK_DEPTH 128
 
 extern void vMainQueueSendPassed(void);
 #define traceQUEUE_SEND( pxQueue ) vMainQueueSendPassed()
