@@ -53,6 +53,7 @@ static TaskHandle_t BufferSwap = NULL;
 
 static TaskHandle_t DemoTask = NULL;
 static TaskHandle_t MenuTask = NULL;
+TaskHandle_t PausedStateTask = NULL;
 static TaskHandle_t HandleTask= NULL;
 static TaskHandle_t HandleChangeX= NULL;
 static TaskHandle_t HandleChangeY= NULL;
@@ -380,6 +381,7 @@ void basicSequentialStateMachine(void *pvParameters)
 
     const int state_change_period = STATE_DEBOUNCE_DELAY;
 
+    int flag_pause=0;
     
     TickType_t last_change = xTaskGetTickCount();
 
@@ -440,11 +442,29 @@ initial_state:
                         reset();
                         vTaskResume(DemoTask);
                     }
+                    break;
                 case 'P':
                     if(DemoTask) {
-                        vTaskSuspend(DemoTask);
+                        if(flag_pause==0)
+                        {
+                            vTaskSuspend(DemoTask);
+                            vTaskSuspend(HandleTask);
+                            vTaskSuspend(HandleUpdateX);
+                            vTaskSuspend(HandleUpdateY);
+                            vTaskResume(PausedStateTask);
+                            flag_pause=1;
+                        }
+                        else
+                        {
+                            vTaskSuspend(PausedStateTask);
+                            vTaskResume(DemoTask);
+                            vTaskResume(HandleTask);
+                            vTaskResume(HandleUpdateX);
+                            vTaskResume(HandleUpdateY);
+                            flag_pause=0;
+                        } 
                     }
-
+                    break;
                 default:
                     break;
             }
@@ -1233,14 +1253,7 @@ void vDemoTask(void *pvParameters)
     // backend.
     //tumDrawBindThread();
 
-    for(int i=12;i<20;i++)
-    {
-        for (int j=0;j<21;j++)
-        {
-            tumDrawFilledBox(20*i+200,20*j+20,20,20,TUMBlue);
-        }
-            
-    } 
+    
     
 
     while (1) {
@@ -1284,15 +1297,16 @@ void vDemoTask(void *pvParameters)
                     }
                 xSemaphoreGive(my_struct_instance_grid.lock_grid);
                 }
-       /*
-       for(int i=12;i<19;i++)
-        {
-            for (int j=0;j<21;j++)
-            {
-                 tumDrawFilledBox(20*i+200,20*j+20,20,20,TUMBlue);
-            }
+
+                for(int i=12;i<20;i++)
+                {
+                    for (int j=0;j<21;j++)
+                    {
+                        tumDrawFilledBox(20*i+200,20*j+20,20,20,TUMBlue);
+                    }
             
-        } */
+                } 
+
                 for(int i=13;i<19;i++)
                 {
                     tumDrawFilledBox(20*i+200,20*2+20,20,20,White);
@@ -1330,6 +1344,55 @@ void vDemoTask(void *pvParameters)
     }
 }
 
+static const char *paused_text = "PAUSED";
+static int paused_text_width;
+
+void vPausedStateTask(void *pvParameters)
+{
+    tumGetTextSize((char *)paused_text, &paused_text_width, NULL);
+    unsigned char next_state_signal;
+
+    while (1) {
+        if (DrawSignal) {
+            if (xSemaphoreTake(DrawSignal, portMAX_DELAY) ==
+                pdTRUE) {
+                xGetButtonInput(); // Update global button data
+
+                if (xSemaphoreTake(buttons.lock, 0) == pdTRUE) {
+                    if (buttons.buttons[KEYCODE(P)]) {
+                        xSemaphoreGive(buttons.lock);
+                        next_state_signal='P';
+                        xQueueSendToFront(
+                            StateQueue,
+                            &next_state_signal,
+                            portMAX_DELAY);
+                    }
+                    xSemaphoreGive(buttons.lock);
+                }
+
+                // Don't suspend task until current execution loop has finished
+                // and held resources have been released
+                taskENTER_CRITICAL();
+
+                if (xSemaphoreTake(ScreenLock, 0) == pdTRUE) {
+                    tumDrawClear(White);
+
+                    tumDrawText((char *)paused_text,
+                                SCREEN_WIDTH / 2 -
+                                paused_text_width /
+                                2,
+                                SCREEN_HEIGHT / 2, Red);
+                }
+
+                xSemaphoreGive(ScreenLock);
+
+                taskEXIT_CRITICAL();
+
+                vTaskDelay(10);
+            }
+        }
+    }
+}
 int main(int argc, char *argv[])
 {
     char *bin_folder_path = tumUtilGetBinFolderPath(argv[0]);
@@ -1398,6 +1461,14 @@ int main(int argc, char *argv[])
         goto err_menutask;
     }
 
+    if (xTaskCreate(vPausedStateTask, "PausedStateTask",
+                    mainGENERIC_STACK_SIZE, NULL, mainGENERIC_PRIORITY,
+                    &PausedStateTask) != pdPASS) {
+        //PRINT_TASK_ERROR("PausedStateTask");
+        goto err_pausedstate;
+    }
+
+    vTaskSuspend(PausedStateTask);
     vTaskSuspend(DemoTask);
     vTaskSuspend(MenuTask);
     vTaskStartScheduler();
@@ -1407,6 +1478,8 @@ int main(int argc, char *argv[])
 err_menutask:
     vTaskDelete(DemoTask);
 err_demotask:
+    vTaskDelete(PausedStateTask);
+err_pausedstate:
     vTaskDelete(BufferSwap);
 err_bufferswap:
     vTaskDelete(StateMachine);
