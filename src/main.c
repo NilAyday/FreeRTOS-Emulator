@@ -72,18 +72,7 @@ TimerHandle_t myTimer= NULL;
 
 static image_handle_t logo_image=NULL;
 
-/*
-struct my_X{
-    int condition_X_Right;
-    int condition_X_Left;
-};
 
-struct my_struct_X{
-    SemaphoreHandle_t lock_X;
-    struct my_X my_X_instance;
-};
-struct my_struct_X my_struct_instance_X={.lock_X=NULL};
-*/
 
 struct my_Y{
     int condition_Y2;
@@ -180,13 +169,36 @@ void xGetButtonInput(void)
 
 #define KEYCODE(CHAR) SDL_SCANCODE_##CHAR
 
-
-void Tetrimino()
+int Block[7];
+int Random_Generator(int number)
 {
-    xSemaphoreTake(my_struct_instance_tetri.lock_tetri,portMAX_DELAY);
-    int Tetrimino= my_struct_instance_tetri.Tetri_number;
-    xSemaphoreGive(my_struct_instance_tetri.lock_tetri);
+    time_t t;
+    srand((unsigned) time(&t));
+    if(number==0)
+    {
+         for(int i=0; i<7; i++)
+        {
+            Block[i]=i;
+        }
+
+        for(int i=0; i<7; i++)
+        {
+            int j= (i+ rand())%7;
+            int t = Block[j];
+            Block[j]=Block[i];
+            Block[i]=t;
+        }
+    }
+    return(Block[number]);
+}
+
+void Tetrimino(int Tetrimino_number)
+{
+    int Tetrimino;
     
+    Tetrimino=Random_Generator(Tetrimino_number);
+    
+
     if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
     {   
         if(xSemaphoreTake(instance_next_shape.lock,portMAX_DELAY)==pdTRUE)
@@ -330,14 +342,9 @@ void reset()
 
     xSemaphoreGive(my_struct_instance_shape.lock_shape);
     } 
-    xSemaphoreTake(my_struct_instance_tetri.lock_tetri,portMAX_DELAY);
-    my_struct_instance_tetri.Tetri_number=0;
-    xSemaphoreGive(my_struct_instance_tetri.lock_tetri);
-    Tetrimino();
-    xSemaphoreTake(my_struct_instance_tetri.lock_tetri,portMAX_DELAY);
-    my_struct_instance_tetri.Tetri_number=1;
-    xSemaphoreGive(my_struct_instance_tetri.lock_tetri);
-    Tetrimino();
+
+    Tetrimino(0);
+    Tetrimino(1);
 }
 
 void changeState(volatile unsigned char *state, unsigned char forwards)
@@ -669,7 +676,7 @@ void rotate_tetrimino_L()
 
     // ------ control_elements();
     
-        
+        /*
 
           for(int j=0;j<5;j++)
         {
@@ -681,7 +688,7 @@ void rotate_tetrimino_L()
         }
         printf("\n");
     
-    
+    */
     /*
     for(int j=0;j<4;j++)
         {
@@ -757,7 +764,7 @@ void rotate_tetrimino_R()
 
     // ------ control_elements();
     
-        
+        /*
 
           for(int j=0;j<5;j++)
         {
@@ -768,7 +775,7 @@ void rotate_tetrimino_R()
             }
         }
         printf("\n");
-    
+    */
     
     /*
     for(int j=0;j<4;j++)
@@ -1060,7 +1067,7 @@ void puf(void)
 
 void Task(void *pvParameters)
 {
-
+    int Tetrimino_number=1;
 
     BoundrysQueue=xQueueCreate(3,sizeof(int));
 
@@ -1072,13 +1079,6 @@ void Task(void *pvParameters)
         //printf("1\n");
         move_tetrimino();
 
-        //xQueueReceive(Que_cond_Y,&condition_Y,0);
-       // xQueueReceive(Que_cond_X_R,&condition_X_Right,0);
-        //xQueueReceive(Que_cond_X_L,&condition_X_Left,0);
-        
-
-        
-        
             if(xSemaphoreTake(my_struct_instance_frame.lock_frame,portMAX_DELAY)==pdTRUE)
             {
                 
@@ -1091,11 +1091,8 @@ void Task(void *pvParameters)
                        
 
                         printf("new\n");
-                        xSemaphoreTake(my_struct_instance_tetri.lock_tetri,portMAX_DELAY);
-                        my_struct_instance_tetri.Tetri_number=(my_struct_instance_tetri.Tetri_number+1)%7;
-                        xSemaphoreGive(my_struct_instance_tetri.lock_tetri);
-                      
-                        Tetrimino();
+                        Tetrimino_number=(Tetrimino_number+1)%7;
+                        Tetrimino(Tetrimino_number);
                         xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY);
                         my_coord_instance.coord_instance.x=5;
                         my_coord_instance.coord_instance.py=0;
@@ -1144,8 +1141,6 @@ void vDrawLogo(void)
         tumDrawLoadedImage(logo_image, 10,
                                      SCREEN_HEIGHT - 10 - image_height);
     }
-
-    
                   
     
 }
@@ -1166,6 +1161,7 @@ void vMenuTask(void *pvParameters)
 
                 tumDrawClear(White); // Clear screen
        // printf("menü\n");
+                
                  static int image_height;
                 image_height = tumDrawGetLoadedImageHeight(logo_image);
                 printf("%d\n",image_height);
@@ -1210,6 +1206,42 @@ void vMenuTask(void *pvParameters)
          
     }
 }
+
+int switch_color(int x)
+{
+    int color;
+    switch(x)
+    {
+        case 1:
+            color=Gray;
+            break;
+        case 2:
+            color=Red;
+            break;
+        case 3:
+            color=Yellow;
+            break;
+        case 4:
+            color=Green;
+            break;
+        case 5:
+            color=Cyan;
+            break;
+        case 6:
+            color=Blue;
+            break;
+        case 7:
+            color=Purple;
+            break;
+        case 8:
+            color=Pink;
+            break;
+        default:
+            break;
+    }
+    return color;
+}
+
 void vDemoTask(void *pvParameters)
 {
     char str[16];
@@ -1271,34 +1303,7 @@ void vDemoTask(void *pvParameters)
                     {
                         for(int j=0;j<21;j++)
                         {
-                            switch(my_struct_instance_frame.Frame[i][j]){
-                                case 1:
-                                    color=Gray;
-                                    break;
-                                case 2:
-                                    color=Red;
-                                    break;
-                                case 3:
-                                    color=Yellow;
-                                    break;
-                                case 4:
-                                    color=Green;
-                                    break;
-                                case 5:
-                                    color=Cyan;
-                                    break;
-                                case 6:
-                                    color=Blue;
-                                    break;
-                                case 7:
-                                    color=Purple;
-                                    break;
-                                case 8:
-                                    color=Pink;
-                                    break;
-                                default:
-                                    break;
-                            }
+                            color=switch_color(my_struct_instance_frame.Frame[i][j]);
                             if(my_struct_instance_frame.Frame[i][j]!=0)
                             {
                                  tumDrawFilledBox(20*i+200,20*j+20,20,20,color);
@@ -1316,34 +1321,7 @@ void vDemoTask(void *pvParameters)
                     {
                         for(int j=0;j<21;j++)
                         {
-                            switch(my_struct_instance_grid.Grid[i][j]){
-                                case 1:
-                                    color=Gray;
-                                    break;
-                                case 2:
-                                    color=Red;
-                                    break;
-                                case 3:
-                                    color=Yellow;
-                                    break;
-                                case 4:
-                                    color=Green;
-                                    break;
-                                case 5:
-                                    color=Cyan;
-                                    break;
-                                case 6:
-                                    color=Blue;
-                                    break;
-                                case 7:
-                                    color=Purple;
-                                    break;
-                                case 8:
-                                    color=Pink;
-                                    break;
-                                default:
-                                    break;
-                            }
+                            color=switch_color(my_struct_instance_grid.Grid[i][j]);
                             if(my_struct_instance_grid.Grid[i][j]!=0)
                             {
                                 tumDrawFilledBox(20*i+200,20*j+20,20,20,color);
@@ -1382,34 +1360,7 @@ void vDemoTask(void *pvParameters)
                     {
                         for(int j=0; j<5; j++)
                         {
-                            switch(instance_next_shape.NextShape[i][j]){
-                                case 1:
-                                    color=Gray;
-                                    break;
-                                case 2:
-                                    color=Red;
-                                    break;
-                                case 3:
-                                    color=Yellow;
-                                    break;
-                                case 4:
-                                    color=Green;
-                                    break;
-                                case 5:
-                                    color=Cyan;
-                                    break;
-                                case 6:
-                                    color=Blue;
-                                    break;
-                                case 7:
-                                    color=Purple;
-                                    break;
-                                case 8:
-                                    color=Pink;
-                                    break;
-                                default:
-                                    break;
-                            }
+                            color=switch_color(instance_next_shape.NextShape[i][j]);
                             if(instance_next_shape.NextShape[i][j]!=0)
                             {
 
