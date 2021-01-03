@@ -41,9 +41,9 @@
 #define mainGENERIC_STACK_SIZE ((unsigned short)2560)
 #define STATE_DEBOUNCE_DELAY 300
 
-int level;
-int total_line;
-int score;
+#define LOGO_FILENAME "../resources/images/Untitled.bmp"
+
+
 
 //const unsigned char next_state_signal = NEXT_TASK;
 const unsigned char prev_state_signal = PREV_TASK;
@@ -55,8 +55,6 @@ static TaskHandle_t DemoTask = NULL;
 static TaskHandle_t MenuTask = NULL;
 TaskHandle_t PausedStateTask = NULL;
 static TaskHandle_t HandleTask= NULL;
-static TaskHandle_t HandleChangeX= NULL;
-static TaskHandle_t HandleChangeY= NULL;
 static TaskHandle_t HandleUpdateY= NULL;
 static TaskHandle_t HandleUpdateX= NULL;
 
@@ -72,21 +70,20 @@ static SemaphoreHandle_t ScreenLock = NULL;
 
 TimerHandle_t myTimer= NULL;
 
+static image_handle_t logo_image=NULL;
+
+/*
 struct my_X{
     int condition_X_Right;
-    int condition_X_Left
+    int condition_X_Left;
 };
+
 struct my_struct_X{
     SemaphoreHandle_t lock_X;
     struct my_X my_X_instance;
 };
-
 struct my_struct_X my_struct_instance_X={.lock_X=NULL};
-
-int y;
-int x=5;
-    //int y=0;
-int px=5;
+*/
 
 struct my_Y{
     int condition_Y2;
@@ -99,6 +96,31 @@ struct my_struct_Y{
 };
 
 struct my_struct_Y my_struct_instance_Y={.lock_Y=NULL};
+
+struct crd{
+    int y;
+    int py;
+    int x;
+    int px;
+};
+struct my_coord{
+    SemaphoreHandle_t lock;
+    struct crd coord_instance;
+};
+struct my_coord my_coord_instance={.lock=NULL};
+
+struct board{
+    int level;
+    int total_line;
+    int score;
+};
+struct my_board{
+    SemaphoreHandle_t lock;
+    struct board board_instance;
+};
+struct my_board my_board_instance={.lock=NULL};
+
+
 
 struct my_struct_tetri{
     SemaphoreHandle_t lock_tetri;
@@ -125,8 +147,15 @@ struct my_struct_shape{
     SemaphoreHandle_t lock_shape;
     int Shape[6][5];
 };
-
 struct my_struct_shape my_struct_instance_shape={.lock_shape=NULL};
+
+struct next_shape{
+    SemaphoreHandle_t lock;
+    int NextShape[6][5];
+};
+struct next_shape instance_next_shape={.lock=NULL};
+
+
 
 QueueHandle_t Que_cond_Y = NULL;
 QueueHandle_t Que_cond_X_R = NULL;
@@ -151,67 +180,6 @@ void xGetButtonInput(void)
 
 #define KEYCODE(CHAR) SDL_SCANCODE_##CHAR
 
-void control_elements()
-{
-    if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
-    {
-        for(int i=0; i<6;i++)
-        {
-            for(int j=0;j<5;j++)
-            {
-                if(my_struct_instance_shape.Shape[i][j]==1)
-                {
-                    if(my_struct_instance_shape.Shape[i][j+1]!=1)
-                        my_struct_instance_shape.Shape[i][j+1]=3;
-
-                    if(my_struct_instance_shape.Shape[i+1][j]==0)
-                    {
-                        my_struct_instance_shape.Shape[i+1][j]=4;
-                    }
-                        
-                    if(my_struct_instance_shape.Shape[i-1][j]==0)
-                    {
-                        my_struct_instance_shape.Shape[i-1][j]=2;
-                    }
-
-                }
-            }
-        }
-        /*
-        for(int i=0; i<6;i++)
-        {
-            for(int j=0;j<5;j++)
-            {
-                if(my_struct_instance_shape.Shape[i][j]==3)
-                {
-
-                    if(my_struct_instance_shape.Shape[i+1][j]==0 & my_struct_instance_shape.Shape[i+1][j-1]!=3)
-                    {
-                        my_struct_instance_shape.Shape[i+1][j]=4;
-                    }
-                        
-                    if(my_struct_instance_shape.Shape[i-1][j]==0 & my_struct_instance_shape.Shape[i-1][j-1]!=3)
-                    {
-                        my_struct_instance_shape.Shape[i-1][j]=2;
-                    }
-
-                }
-                
-            }
-        }*/
-    
-    for(int j=0;j<5;j++)
-        {
-            printf ( "\n" ); 
-            for(int i=0; i<6;i++)
-            {
-               printf ( "%d " ,my_struct_instance_shape.Shape[i][j] );    
-            }
-     }
-     printf ( "\n" );
-    xSemaphoreGive(my_struct_instance_shape.lock_shape);
-    }
-}
 
 void Tetrimino()
 {
@@ -221,64 +189,68 @@ void Tetrimino()
     
     if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
     {   
-        for(int i=0; i<6;i++)
-        {
-            for(int j=0; j<5; j++)
+        if(xSemaphoreTake(instance_next_shape.lock,portMAX_DELAY)==pdTRUE)
+        { 
+            for(int i=0; i<6;i++)
             {
-                my_struct_instance_shape.Shape[i][j]=0;
+                for(int j=0; j<5; j++)
+                {
+                    my_struct_instance_shape.Shape[i][j]=instance_next_shape.NextShape[i][j];
+                    instance_next_shape.NextShape[i][j]=0;
+                }
             }
+            switch(Tetrimino)
+                {
+                    case 0 : //T
+                        instance_next_shape.NextShape[1][2]=2;
+                        instance_next_shape.NextShape[2][2]=2;
+                        instance_next_shape.NextShape[3][2]=2;
+                        instance_next_shape.NextShape[2][3]=2;
+                        break;
+                    case 1 : //J
+                        instance_next_shape.NextShape[1][2]=3;
+                        instance_next_shape.NextShape[2][2]=3;
+                        instance_next_shape.NextShape[3][2]=3;
+                        instance_next_shape.NextShape[3][3]=3;
+                        break;
+                    case 2 : //Z
+                        instance_next_shape.NextShape[1][2]=4;
+                        instance_next_shape.NextShape[2][2]=4;
+                        instance_next_shape.NextShape[2][3]=4;
+                        instance_next_shape.NextShape[3][3]=4;
+                        break;
+                    case 3 : //O
+                        instance_next_shape.NextShape[1][2]=5;
+                        instance_next_shape.NextShape[1][3]=5;
+                        instance_next_shape.NextShape[2][2]=5;
+                        instance_next_shape.NextShape[2][3]=5;
+                        break;
+                    case 4 : //S
+                        instance_next_shape.NextShape[1][3]=6;
+                        instance_next_shape.NextShape[2][2]=6;
+                        instance_next_shape.NextShape[2][3]=6;
+                        instance_next_shape.NextShape[3][2]=6;
+                        break;
+                    case 5 : //L
+                        instance_next_shape.NextShape[1][2]=7;
+                        instance_next_shape.NextShape[1][3]=7;
+                        instance_next_shape.NextShape[2][2]=7;
+                        instance_next_shape.NextShape[3][2]=7;
+                        break;
+                    case 6 : //I
+                        instance_next_shape.NextShape[1][2]=8;
+                        instance_next_shape.NextShape[2][2]=8;
+                        instance_next_shape.NextShape[3][2]=8;
+                        instance_next_shape.NextShape[4][2]=8;
+                        break;
+                    
+                    default:
+                        break;
+                }
+        xSemaphoreGive(instance_next_shape.lock);
         }
-        switch(Tetrimino)
-        {
-            case 1 : //T
-                my_struct_instance_shape.Shape[1][2]=1;
-                my_struct_instance_shape.Shape[2][2]=1;
-                my_struct_instance_shape.Shape[3][2]=1;
-                my_struct_instance_shape.Shape[2][3]=1;
-                break;
-            case 0 : //J
-                my_struct_instance_shape.Shape[1][2]=1;
-                my_struct_instance_shape.Shape[2][2]=1;
-                my_struct_instance_shape.Shape[3][2]=1;
-                my_struct_instance_shape.Shape[3][3]=1;
-                break;
-            case 2 : //Z
-                my_struct_instance_shape.Shape[1][2]=1;
-                my_struct_instance_shape.Shape[2][2]=1;
-                my_struct_instance_shape.Shape[2][3]=1;
-                my_struct_instance_shape.Shape[3][3]=1;
-                break;
-            case 3 : //O
-                my_struct_instance_shape.Shape[1][2]=1;
-                my_struct_instance_shape.Shape[1][3]=1;
-                my_struct_instance_shape.Shape[2][2]=1;
-                my_struct_instance_shape.Shape[2][3]=1;
-                break;
-            case 4 : //S
-                my_struct_instance_shape.Shape[1][3]=1;
-                my_struct_instance_shape.Shape[2][2]=1;
-                my_struct_instance_shape.Shape[2][3]=1;
-                my_struct_instance_shape.Shape[3][2]=1;
-                break;
-            case 5 : //L
-                my_struct_instance_shape.Shape[1][2]=1;
-                my_struct_instance_shape.Shape[1][3]=1;
-                my_struct_instance_shape.Shape[2][2]=1;
-                my_struct_instance_shape.Shape[3][2]=1;
-                break;
-            case 6 : //I
-                my_struct_instance_shape.Shape[1][2]=1;
-                my_struct_instance_shape.Shape[3][2]=1;
-                my_struct_instance_shape.Shape[2][2]=1;
-                my_struct_instance_shape.Shape[4][2]=1;
-                break;
-            
-            default:
-                  break;
-        }
-        xSemaphoreGive(my_struct_instance_shape.lock_shape);
-        control_elements();
-        
+    xSemaphoreGive(my_struct_instance_shape.lock_shape);
+
     }
 
 }
@@ -286,7 +258,7 @@ void Tetrimino()
 void Grid()
 {
     if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
-        {
+    {
            for(int i=0; i<21;i++) 
            {
                my_struct_instance_grid.Grid[0][i]=1;
@@ -297,19 +269,33 @@ void Grid()
                my_struct_instance_grid.Grid[i][20]=1;
            }
            
-        xSemaphoreGive(my_struct_instance_grid.lock_grid);
-        }
+    xSemaphoreGive(my_struct_instance_grid.lock_grid);
+    }
+
+    if(xSemaphoreTake(instance_next_shape.lock,portMAX_DELAY)==pdTRUE)
+    { 
+        instance_next_shape.NextShape[1][2]=1;
+        instance_next_shape.NextShape[3][2]=1;
+        instance_next_shape.NextShape[2][2]=1;
+        instance_next_shape.NextShape[4][2]=1;
+    xSemaphoreGive(instance_next_shape.lock);  
+    }
     
     
 }
 void reset()
 {
-    level=5;
-    total_line=0;
-    score=0;
+    xSemaphoreTake(my_board_instance.lock,portMAX_DELAY);
+    my_board_instance.board_instance.total_line=0;
+    my_board_instance.board_instance.score=0;
+    xSemaphoreGive(my_board_instance.lock);
 
-    y=0;
-    x=5;
+    xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY);
+    my_coord_instance.coord_instance.x=5;
+    my_coord_instance.coord_instance.py=0;
+    my_coord_instance.coord_instance.x=5;
+    my_coord_instance.coord_instance.y=0;
+    xSemaphoreGive(my_coord_instance.lock);
 
     if(xSemaphoreTake(my_struct_instance_frame.lock_frame,portMAX_DELAY)==pdTRUE)
     {
@@ -337,7 +323,8 @@ void reset()
         {
             for(int j=0; j<5;j++)
             {
-                my_struct_instance_shape.Shape[i][j]=0;    
+                my_struct_instance_shape.Shape[i][j]=0;
+                instance_next_shape.NextShape[i][j]=0;   
             }
         }  
 
@@ -345,6 +332,10 @@ void reset()
     } 
     xSemaphoreTake(my_struct_instance_tetri.lock_tetri,portMAX_DELAY);
     my_struct_instance_tetri.Tetri_number=0;
+    xSemaphoreGive(my_struct_instance_tetri.lock_tetri);
+    Tetrimino();
+    xSemaphoreTake(my_struct_instance_tetri.lock_tetri,portMAX_DELAY);
+    my_struct_instance_tetri.Tetri_number=1;
     xSemaphoreGive(my_struct_instance_tetri.lock_tetri);
     Tetrimino();
 }
@@ -389,7 +380,7 @@ void basicSequentialStateMachine(void *pvParameters)
         if (state_changed) {
             goto initial_state;
         }
-        printf("1\n");
+        // printf("1\n");
         // Handle state machine input
         if (StateQueue)
             if (xQueueReceive(StateQueue, &input, portMAX_DELAY) ==
@@ -550,42 +541,263 @@ static int vCheckStateInputTask(void)
     return 0;
 }
 
-void move_tetrimino(int x, int y, int px, int py)
+void move_tetrimino()
 {
 
     int xmin=6;
     int xmax=0;
     int ymax=0;
-    int pxmin;
-    int pxmax;
-    int pymax;
-
-    if(xSemaphoreTake(my_struct_instance_Y.lock_Y,portMAX_DELAY)==pdTRUE)
-    {
-        my_struct_instance_Y.my_Y_instance.condition_Y=1;
-        xSemaphoreGive(my_struct_instance_Y.lock_Y);
-    }
-                                    
-    if(xSemaphoreTake(my_struct_instance_X.lock_X,portMAX_DELAY)==pdTRUE)
-    {
-         my_struct_instance_X.my_X_instance.condition_X_Right=1;
-         my_struct_instance_X.my_X_instance.condition_X_Left=1;
-    xSemaphoreGive(my_struct_instance_X.lock_X);
-    }
-
-    //xQueueOverwrite(Que_cond_Y,&condition_Y);
-    //xQueueOverwrite(Que_cond_X_R,&condition_X_Right);
     
 
    if(xSemaphoreTake(my_struct_instance_frame.lock_frame,portMAX_DELAY)==pdTRUE)
     {
+          
+        if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
+        {  
+                    
+                    for(int i=0; i<6;i++)
+                    {
+                        for(int j=0; j<5;j++)
+                        {
+                            if (my_struct_instance_shape.Shape[i][j]!=0)
+                            {
+                                 if(ymax<j+1)
+                                    ymax=j+1;
+                            }
+                        }
+                    }  
+                    for(int j=0; j<5;j++)
+                    {
+                        for(int i=0; i<6;i++)
+                        {
+                            if (my_struct_instance_shape.Shape[i][j]!=0)
+                            {
+                                if (xmin>i)
+                                    xmin=i;
+                                if(i+1>xmax)
+                                    xmax=i+1;
+                            }
+                        }
+                    }  
+                    
+                   
+
+                    for(int i=0; i<12; i++)
+                    {   
+                        for(int j=0; j<21; j++)
+                        {
+                            my_struct_instance_frame.Frame[i][j]= 0;
+                        }
+                    }
+                   
+                  
+                    //printf("-> %d, %d, %d \n",xmin,xmax,ymax);
+                    xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY);
+                    for(int i=xmin; i<xmax; i++)
+                    {
+                        for(int j=0; j<ymax; j++)
+                        {
+                            my_struct_instance_frame.Frame[my_coord_instance.coord_instance.x+i][my_coord_instance.coord_instance.y+j]= my_struct_instance_shape.Shape[i][j];
+                        }
+                    }    
+                    xSemaphoreGive(my_coord_instance.lock);
+
+        xSemaphoreGive(my_struct_instance_shape.lock_shape);            
+        }   
+    xSemaphoreGive(my_struct_instance_frame.lock_frame);
+    } 
+}
+
+
+
+
+void rotate_tetrimino_L()
+{
+
+    printf("girdi");
+    int tmp[5][5];
+    xSemaphoreTake(my_struct_instance_tetri.lock_tetri,portMAX_DELAY);
+    printf("Tetri number : %d",my_struct_instance_tetri.Tetri_number);
+
+    if(1)
+    {
+        if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
+        {
+        
+            for(int i=0; i<5; i++)
+            {
+                for(int j=0; j<5; j++)
+                {
+                    
+                    tmp[i][j]=my_struct_instance_shape.Shape[i][j];
+                   
+                }
+            }
+            for(int x=0; x<5; x++)
+            {
+                for(int y=x; y<5-x-1;y++)
+                {
+                
+                    int temp=tmp[x][y];
+                    tmp[x][y]=tmp[y][5-1-x];
+                    tmp[y][5-1-x]=tmp[5-1-x][5-1-y];
+                    tmp[5-1-x][5-1-y]=tmp[5-1-y][x];
+                    tmp[5-1-y][x]=temp;
+                
+                }
+            }
+            for(int i=0; i<6; i++)
+            {
+                for(int j=0; j<5; j++)
+                {
+                    my_struct_instance_shape.Shape[i][j]=0;
+                }
+            }
+            for(int i=0; i<5; i++)
+            {
+                for(int j=0; j<5; j++)
+                {
+                    my_struct_instance_shape.Shape[i][j]=tmp[i][j];
+                }
+            }
+        xSemaphoreGive(my_struct_instance_shape.lock_shape);
+        }
+
+        
+    }
+    xSemaphoreGive(my_struct_instance_tetri.lock_tetri);
+
+    // ------ control_elements();
+    
+        
+
+          for(int j=0;j<5;j++)
+        {
+            printf("\n");
+            for(int i=0; i<6;i++)
+            {
+               printf ( "%d " ,my_struct_instance_shape.Shape[i][j]);    
+            }
+        }
+        printf("\n");
+    
+    
+    /*
+    for(int j=0;j<4;j++)
+        {
+            printf ( "\n" ); 
+            for(int i=0; i<4;i++)
+            {
+               printf ( "%d " ,tmp[i][j] );    
+            }
+     }
+     printf("\n");
+     printf("------------------\n");*/
+}
+
+void rotate_tetrimino_R()
+{
+
+
+    int tmp[5][5];
+    xSemaphoreTake(my_struct_instance_tetri.lock_tetri,portMAX_DELAY);
+    printf("Tetri number : %d",my_struct_instance_tetri.Tetri_number);
+
+/*
+   if(my_struct_instance_tetri.Tetri_number==0)
+    {
+        xSemaphoreGive(my_struct_instance_tetri.lock_tetri);
+        rotate_I();
+    }  */
+    if(1)
+    {
+        if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
+        {
+        
+            for(int i=0; i<5; i++)
+            {
+                for(int j=0; j<5; j++)
+                {
+                    tmp[i][j]=my_struct_instance_shape.Shape[i][j];
+                }
+                    
+            }
+            for(int i=0; i<5/2; i++)
+            {
+                for(int j=i; j<5-i-1;j++)
+                {
+                
+                    int temp=tmp[i][j];
+                    tmp[i][j]=tmp[5-1-j][i];
+                    tmp[5-1-j][i]=tmp[5-1-i][5-1-j];
+                    tmp[5-1-i][5-1-j]=tmp[j][5-1-i];
+                    tmp[j][5-1-i]=temp;
+                }
+            }
+            for(int i=0; i<6; i++)
+            {
+                for(int j=0; j<5; j++)
+                {
+                    my_struct_instance_shape.Shape[i][j]=0;
+                }
+            }
+            for(int i=0; i<5; i++)
+            {
+                for(int j=0; j<5; j++)
+                {
+                    my_struct_instance_shape.Shape[i][j]=tmp[i][j];
+                }
+            }
+        xSemaphoreGive(my_struct_instance_shape.lock_shape);
+        }
+
+        
+    }
+    xSemaphoreGive(my_struct_instance_tetri.lock_tetri);
+
+    // ------ control_elements();
+    
+        
+
+          for(int j=0;j<5;j++)
+        {
+            printf("\n");
+            for(int i=0; i<6;i++)
+            {
+               printf ( "%d " ,my_struct_instance_shape.Shape[i][j]);    
+            }
+        }
+        printf("\n");
+    
+    
+    /*
+    for(int j=0;j<4;j++)
+        {
+            printf ( "\n" ); 
+            for(int i=0; i<4;i++)
+            {
+               printf ( "%d " ,tmp[i][j] );    
+            }
+     }
+     printf("\n");
+     printf("------------------\n");*/
+}
+
+int move_condition(int x, int y)
+{
+    int xmin=6;
+    int xmax=0;
+    int ymax=0;
+    int CFrame[12][21];
+    int CFlag;
+
+    CFlag=0;                                
+
         if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
-            {   
+        {   
                 if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
-                 {  
-                    xQueueReceive(BoundrysQueue,&pxmin,0);
-                    xQueueReceive(BoundrysQueue,&pxmax,0);
-                    xQueueReceive(BoundrysQueue,&pymax,0);
+                {  
+                   
                     for(int i=0; i<6;i++)
                     {
                         for(int j=0; j<5;j++)
@@ -612,388 +824,88 @@ void move_tetrimino(int x, int y, int px, int py)
                     }  
                     
                     
-                    xQueueSend(BoundrysQueue,&xmin,portMAX_DELAY);
-                    xQueueSend(BoundrysQueue,&xmax,portMAX_DELAY);
-                    xQueueSend(BoundrysQueue,&ymax,portMAX_DELAY);
-                    /*
-                    if(xmin!=pxmin)
-                    {
-                    printf("current = %d, %d, %d \n", xmin, xmax,ymax);
-                    printf("past= %d, %d, %d \n", pxmin, pxmax,pymax);
-                    }
-                   */
-                   // printf("current = %d, %d, %d \n", xmin, xmax,ymax);
-
                     for(int i=0; i<12; i++)
                     {   
                         for(int j=0; j<21; j++)
                         {
-                            my_struct_instance_frame.Frame[i][j]= 0;
+                            CFrame[i][j]= 0;
                         }
                     }
                    
                   
                     //printf("-> %d, %d, %d \n",xmin,xmax,ymax);
-
                     for(int i=xmin; i<xmax; i++)
                     {
                         for(int j=0; j<ymax; j++)
                         {
-                            my_struct_instance_frame.Frame[x+i][y+j]= my_struct_instance_shape.Shape[i][j];
+                            CFrame[x+i][y+j]= my_struct_instance_shape.Shape[i][j];
                         }
                     }    
                     
-                    for(int i=0; i<12 ; i++)
-                    {
+                    for(int i=0; i<12; i++)
+                    {   
                         for(int j=0; j<21; j++)
                         {
-                            if((my_struct_instance_grid.Grid[i][j]==1) & (my_struct_instance_frame.Frame[i][j]!=0) )
+                            if((CFrame[i][j]!=0) & (my_struct_instance_grid.Grid[i][j]!=0))
                             {
-                                if(my_struct_instance_frame.Frame[i][j]==3)
-                                {
-                                     if(xSemaphoreTake(my_struct_instance_Y.lock_Y,portMAX_DELAY)==pdTRUE)
-                                     {
-                                         my_struct_instance_Y.my_Y_instance.condition_Y=0;
-                                         xSemaphoreGive(my_struct_instance_Y.lock_Y);
-                                     }
-                                    
-                                    //xQueueOverwrite(Que_cond_Y,&condition_Y);
-                                }
-                                if(xSemaphoreTake(my_struct_instance_X.lock_X,portMAX_DELAY)==pdTRUE)
-                                {
-                                    if(my_struct_instance_frame.Frame[i][j]==4)
-                                    {
-                                        my_struct_instance_X.my_X_instance.condition_X_Right=0;
-                                    }
-                                    if(my_struct_instance_frame.Frame[i][j]==2)
-                                    {
-                                        my_struct_instance_X.my_X_instance.condition_X_Left=0;
-                                    }
-                                    //printf("%d, %d \n",my_struct_instance_X.my_X_instance.condition_X_Right, my_struct_instance_X.my_X_instance.condition_X_Left);
-                                xSemaphoreGive(my_struct_instance_X.lock_X);
-                                }
+                                CFlag=1;
                             }
                         }
                     }
+
                 }
                 xSemaphoreGive(my_struct_instance_shape.lock_shape); 
         }
         xSemaphoreGive(my_struct_instance_grid.lock_grid);  
-            
-    xSemaphoreGive(my_struct_instance_frame.lock_frame);
-    } 
+    return CFlag;
 }
 
 
-
-
-
-
-void rotate_I()
-{
-    if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
-    {
-        if(my_struct_instance_shape.Shape[2][0]==1)
-        {
-            for(int i=0; i<6; i++)
-            {
-                for(int j=0; j<5; j++)
-                {
-                
-                    my_struct_instance_shape.Shape[i][j]=0;
-                }
-            }
-            my_struct_instance_shape.Shape[1][2]=1;
-            my_struct_instance_shape.Shape[3][2]=1;
-            my_struct_instance_shape.Shape[2][2]=1;
-            my_struct_instance_shape.Shape[4][2]=1;
-        }
-        else
-        {
-            for(int i=0; i<6; i++)
-            {
-                for(int j=0; j<5; j++)
-                {
-                
-                    my_struct_instance_shape.Shape[i][j]=0;
-                }
-            }
-            my_struct_instance_shape.Shape[2][0]=1;
-            my_struct_instance_shape.Shape[2][1]=1;
-            my_struct_instance_shape.Shape[2][2]=1;
-            my_struct_instance_shape.Shape[2][3]=1;
-            
-        }
-        
-        for(int j=0;j<5;j++)
-        {
-            printf("\n");
-            for(int i=0; i<6;i++)
-            {
-               printf ( "%d " ,my_struct_instance_shape.Shape[i][j]);    
-            }
-        }
-        printf("\n");
-    xSemaphoreGive(my_struct_instance_shape.lock_shape);
-    }
-    //control_elements();
-}
-void rotate_tetrimino_L()
-{
-    printf("girdi");
-    int tmp[4][4];
-    xSemaphoreTake(my_struct_instance_tetri.lock_tetri,portMAX_DELAY);
-    if(my_struct_instance_tetri.Tetri_number!=6)
-    {
-        if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
-        {
-        
-            for(int i=0; i<4; i++)
-            {
-                for(int j=0; j<4; j++)
-                {
-                    if(my_struct_instance_shape.Shape[i][j]==1)
-                        tmp[i][j]=1;
-                    else
-                        tmp[i][j]=0;
-                }
-            }
-            for(int x=0; x<4; x++)
-            {
-                for(int y=x; y<4-x-1;y++)
-                {
-                
-                    int temp=tmp[x][y];
-                    tmp[x][y]=tmp[y][4-1-x];
-                    tmp[y][4-1-x]=tmp[4-1-x][4-1-y];
-                    tmp[4-1-x][4-1-y]=tmp[4-1-y][x];
-                    tmp[4-1-y][x]=temp;
-                
-                }
-            }
-            for(int i=0; i<6; i++)
-            {
-                for(int j=0; j<5; j++)
-                {
-                    my_struct_instance_shape.Shape[i][j]=0;
-                }
-            }
-            for(int i=0; i<4; i++)
-            {
-                for(int j=0; j<4; j++)
-                {
-                    my_struct_instance_shape.Shape[i+1][j]=tmp[i][j];
-                }
-            }
-        xSemaphoreGive(my_struct_instance_shape.lock_shape);
-        }
-        
-    }
-    else
-    {
-            rotate_I();
-    }
-    xSemaphoreGive(my_struct_instance_tetri.lock_tetri);
-
-    control_elements();
-        
-/*
-          for(int j=0;j<5;j++)
-        {
-            printf("\n");
-            for(int i=0; i<6;i++)
-            {
-               printf ( "%d " ,my_struct_instance_shape.Shape[i][j]);    
-            }
-        }
-        printf("\n");*/
-    
-    
-    /*
-    for(int j=0;j<4;j++)
-        {
-            printf ( "\n" ); 
-            for(int i=0; i<4;i++)
-            {
-               printf ( "%d " ,tmp[i][j] );    
-            }
-     }
-     printf("\n");
-     printf("------------------\n");*/
-}
-void rotate_tetrimino_R()
-{
-    int m=5;
-    int n=5;
-    int tmp[6][5];
-    xSemaphoreTake(my_struct_instance_tetri.lock_tetri,portMAX_DELAY);
-    if(my_struct_instance_tetri.Tetri_number!=6)
-    {   
-        if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
-        {  
-        
-            for(int i=0; i<6; i++)
-            {
-                for(int j=0; j<5; j++)
-                {
-                
-                    tmp[i][j]=0;
-                }
-            }
-            for(int i=m-1; i>=0; i--)
-            {
-                for(int j=0; j<n; j++)
-                {
-                    if(my_struct_instance_shape.Shape[i][j]==1)
-                        tmp[j][m-i-1]=my_struct_instance_shape.Shape[i][j];   
-                    else 
-                        tmp[j][m-i-1]=0;
-                }
-            }
-            for(int i=0; i<6; i++)
-            {
-                for(int j=0; j<5; j++)
-                {
-                    my_struct_instance_shape.Shape[i][j]=tmp[i][j];
-                }
-            }
-        xSemaphoreGive(my_struct_instance_shape.lock_shape);
-        }
-    }
-    else
-    {
-        rotate_I();
-    }
-    xSemaphoreGive(my_struct_instance_tetri.lock_tetri);
-    control_elements();   
-
-           /* for(int j=0;j<5;j++)
-        {
-            printf("\n");
-            for(int i=0; i<6;i++)
-            {
-               printf ( "%d " ,my_struct_instance_shape.Shape[i][j]);    
-            }
-        }
-        printf("\n");*/
-     
-    
-    
-    
-
-    /*for(int j=0;j<5;j++)
-        {
-            printf ( "\n" ); 
-            for(int i=0; i<6;i++)
-            {
-               printf ( "%d " ,tmp[i][j] );    
-            }
-     }
-     printf("\n");
-     printf("------------------\n");*/
-     
-}
-
-
-int  py=0;
-
-/*
-void TimerY(TimerHandle_t xTimer)
-{
-    //int y;
-    //int py;
-    //xQueueReceive(YQueue,&y,0);
-    //xQueueReceive(YQueue,&py,0);
-   if(xSemaphoreTake(my_struct_instance_Y.lock_Y,portMAX_DELAY)==pdTRUE)
-   {
-   
-    
-    //printf("%d\n",condition_Y);
-        if(my_struct_instance_Y.my_Y_instance.condition_Y==1)
-        {
-            py=y;
-            y=y+1;
-        }   
-      
-    xSemaphoreGive(my_struct_instance_Y.lock_Y);
-   }
-    //xQueueSend(YQueue,&y,portMAX_DELAY);
-    //xQueueSend(YQueue,&py,portMAX_DELAY);
-
-}*/
-
-int delay;
 
 void UpdateY()
 {
-    delay=600-level*56;
+    int delay;
+    int Flag_D=1;
+    int cx,cy;
+
     while(1)
     {
-        py=y;
-        if(x==px)
+        xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY);
+        my_coord_instance.coord_instance.py=my_coord_instance.coord_instance.y;
+        cx=my_coord_instance.coord_instance.x;
+        cy=my_coord_instance.coord_instance.y; 
+        xSemaphoreGive(my_coord_instance.lock);
+
+        if(move_condition(cx,cy+1)==0)
         {
-            if(xSemaphoreTake(my_struct_instance_Y.lock_Y,portMAX_DELAY)==pdTRUE)
-            {
-                if(my_struct_instance_Y.my_Y_instance.condition_Y==1)
-                {
-                    my_struct_instance_Y.my_Y_instance.condition_Y2=0;
-                    y=y+1;
+                if(xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY)==pdTRUE)
+                {  
+                     my_coord_instance.coord_instance.y++;
+                     my_struct_instance_Y.my_Y_instance.condition_Y2=0;
+                     xSemaphoreGive(my_coord_instance.lock);
                 }
-                else
-                {
-                    my_struct_instance_Y.my_Y_instance.condition_Y2++;
-                }
-            xSemaphoreGive(my_struct_instance_Y.lock_Y);
-            }
-                
         }
-        vTaskDelay(pdMS_TO_TICKS(delay));
-    }
-}
-void UpdateX()
-{
-    int Flag_R=0;
-    int Flag_L=0;
-    int Flag_D=0;
-    int Flag_A=0;
-    int Flag_B=0;
-
-    
-
-    while(1)
-    {
-       if(xSemaphoreTake(my_struct_instance_X.lock_X,portMAX_DELAY)==pdTRUE)
-       {
-           
-            
-
-            if (xSemaphoreTake(buttons.lock, 0) == pdTRUE) {
-                px=x;  
-                xGetButtonInput();
-                if (buttons.buttons[79]) { 
-                
-                    if(my_struct_instance_X.my_X_instance.condition_X_Right==1) 
-                    {
-                        x=x+1;
-                    }
+        else
+        {
+             if(xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY)==pdTRUE)
+                {  
+                     my_struct_instance_Y.my_Y_instance.condition_Y2++;
+                     xSemaphoreGive(my_coord_instance.lock);
                 }
-                    
-                
+        }
+        
+        
 
-                if (buttons.buttons[80]) { 
-                    if(my_struct_instance_X.my_X_instance.condition_X_Left==1) 
-                    {
-                        x=x-1;
-                    }  
-                }
-                
-                
-                if (buttons.buttons[81]) { 
+        if (xSemaphoreTake(buttons.lock, 0) == pdTRUE) {
+            xGetButtonInput();
+            xSemaphoreGive(buttons.lock);
+
+            xSemaphoreTake(my_board_instance.lock,portMAX_DELAY);
+            if (buttons.buttons[81]) { 
                     if(Flag_D==0)
                     {
                         Flag_D=1;
-                        delay=(600-level*56)/2;
-                        
+                        delay=(600-my_board_instance.board_instance.level*56)/2; 
                     }
                     
                 }else 
@@ -1001,41 +913,83 @@ void UpdateX()
                     if(Flag_D==1)
                     {
                         Flag_D=0;
-                        delay=600-level*56;
+                        delay=600-my_board_instance.board_instance.level*56;
                     }
                 } 
-                
+            xSemaphoreGive(my_board_instance.lock);
+         
+        }
+        vTaskDelay(pdMS_TO_TICKS(delay));
+    }
+}
 
-                if (buttons.buttons[4]) { 
-                    if(Flag_A==0)
-                    {
-                        xSemaphoreGive(buttons.lock);
-                        Flag_A=1;
-                        if(my_struct_instance_X.my_X_instance.condition_X_Left==1 & my_struct_instance_X.my_X_instance.condition_X_Right==1)
-                            rotate_tetrimino_R();
-                    }
-                    
-                }else {Flag_A=0;}
 
-                if (buttons.buttons[5]) { 
-                    if(Flag_B==0)
-                    {
-                        xSemaphoreGive(buttons.lock);
-                        Flag_B=1;
-                        if(my_struct_instance_X.my_X_instance.condition_X_Left==1 & my_struct_instance_X.my_X_instance.condition_X_Right==1)
-                            rotate_tetrimino_L();
-                    }
-                    
-                }else {Flag_B=0;}
 
-                xSemaphoreGive(buttons.lock); 
-                my_struct_instance_X.my_X_instance.condition_X_Right=1;
-                my_struct_instance_X.my_X_instance.condition_X_Left=1;
-                
-              
+void UpdateX()
+{
+    int Flag_A=0;
+    int Flag_B=0;
+    int cx,cy;
+
+    
+    while(1)
+    {
+        if(xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY)==pdTRUE)
+        {
+                my_coord_instance.coord_instance.px=my_coord_instance.coord_instance.x;
+                cx=my_coord_instance.coord_instance.x;
+                cy=my_coord_instance.coord_instance.y;  
+                xSemaphoreGive(my_coord_instance.lock);
+        }  
+                  
+        if (xSemaphoreTake(buttons.lock, 0) == pdTRUE)
+        {
+            xGetButtonInput();
+            xSemaphoreGive(buttons.lock);
+            if (buttons.buttons[79]) 
+            { 
+                if(move_condition(cx+1,cy)==0)
+                {
+                        if(xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY)==pdTRUE)
+                        {  
+                            my_coord_instance.coord_instance.x++;
+                            xSemaphoreGive(my_coord_instance.lock);
+                        }
+                }
             }
-        xSemaphoreGive(my_struct_instance_X.lock_X);
-       }
+            if (buttons.buttons[80]) 
+            { 
+                if(move_condition(cx-1,cy)==0)
+                {
+                        if(xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY)==pdTRUE)
+                        {  
+                            my_coord_instance.coord_instance.x--;
+                            xSemaphoreGive(my_coord_instance.lock);
+                        }
+                }
+            } 
+            if (buttons.buttons[4] & Flag_A==0) 
+            { 
+                Flag_A=1;
+                rotate_tetrimino_R();    
+                if(move_condition(cx,cy)==1)
+                {
+                    rotate_tetrimino_L();
+                }
+            }else Flag_A=0;
+
+            if (buttons.buttons[5] & Flag_B==0) 
+            { 
+                Flag_B=1;
+                rotate_tetrimino_L();    
+                if(move_condition(cx,cy)==1)
+                {
+                    rotate_tetrimino_R();
+                }
+            }else Flag_B=0;
+        }
+                
+                 
        vTaskDelay(100);
     }
 }
@@ -1045,7 +999,8 @@ void puf(void)
     int flag;
     int count_line=0;
     int factor=0;
-  
+
+    xSemaphoreTake(my_board_instance.lock,portMAX_DELAY);
     if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
     {
         for(int j=19;j>1;j--)
@@ -1072,7 +1027,7 @@ void puf(void)
                     }
                 }
                 count_line++;
-                total_line++;
+                my_board_instance.board_instance.total_line++;
                 j++;
             }
         }
@@ -1099,37 +1054,23 @@ void puf(void)
             break;
         
     }
-    score=score+factor*(level+1);
+    my_board_instance.board_instance.score=my_board_instance.board_instance.score+factor*(my_board_instance.board_instance.level+1);
+    xSemaphoreGive(my_board_instance.lock);
 }
 
 void Task(void *pvParameters)
 {
 
-    //int condition_Y;
-    //int condition_X_Right;
-    //int condition_X_Left;
-
-    
-    
-
-    //Start position of the Tetrimino
-    
-
-    
-
-    int flag=0;
-    //myTimer = xTimerCreate("MyTimer",pdMS_TO_TICKS(300),pdTRUE,(void*)0,TimerY);
-    //xTimerStart(myTimer,0);
 
     BoundrysQueue=xQueueCreate(3,sizeof(int));
+
     
-    Tetrimino();
-    Grid();
+    reset();
     
     while(1)
     {
         //printf("1\n");
-        move_tetrimino(x,y,px,py);
+        move_tetrimino();
 
         //xQueueReceive(Que_cond_Y,&condition_Y,0);
        // xQueueReceive(Que_cond_X_R,&condition_X_Right,0);
@@ -1149,25 +1090,27 @@ void Task(void *pvParameters)
                         my_struct_instance_Y.my_Y_instance.condition_Y2=0;
                        
 
-                        printf("yeni\n");
+                        printf("new\n");
                         xSemaphoreTake(my_struct_instance_tetri.lock_tetri,portMAX_DELAY);
                         my_struct_instance_tetri.Tetri_number=(my_struct_instance_tetri.Tetri_number+1)%7;
                         xSemaphoreGive(my_struct_instance_tetri.lock_tetri);
                       
                         Tetrimino();
-                        px=5;
-                        py=0;
-                        x=5;
-                        y=0;
+                        xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY);
+                        my_coord_instance.coord_instance.x=5;
+                        my_coord_instance.coord_instance.py=0;
+                        my_coord_instance.coord_instance.x=5;
+                        my_coord_instance.coord_instance.y=0;
+                        xSemaphoreGive(my_coord_instance.lock);
                         if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
                         {
                             for(int i=0;i<12; i++)
                             {
                                 for(int j=0; j<21; j++)
                                 {
-                                    if(my_struct_instance_grid.Grid[i][j]==0 && my_struct_instance_frame.Frame[i][j]==1)
+                                    if(my_struct_instance_grid.Grid[i][j]==0 && my_struct_instance_frame.Frame[i][j]!=0)
                                     {
-                                        my_struct_instance_grid.Grid[i][j]=1;
+                                        my_struct_instance_grid.Grid[i][j]=my_struct_instance_frame.Frame[i][j];
                                     }
                                     my_struct_instance_frame.Frame[i][j]=0;
                             
@@ -1190,10 +1133,27 @@ void Task(void *pvParameters)
        
     }
 }
+
+void vDrawLogo(void)
+{
+    static int image_height;
+    printf("draw\n");
+    if ((image_height = tumDrawGetLoadedImageHeight(logo_image)) != -1)
+    {
+        printf("height");
+        tumDrawLoadedImage(logo_image, 10,
+                                     SCREEN_HEIGHT - 10 - image_height);
+    }
+
+    
+                  
+    
+}
+
 void vMenuTask(void *pvParameters)
 {
-     
-
+     char str[16];
+    
     while(1)
     {
         if (DrawSignal)
@@ -1206,6 +1166,41 @@ void vMenuTask(void *pvParameters)
 
                 tumDrawClear(White); // Clear screen
        // printf("menü\n");
+                 static int image_height;
+                image_height = tumDrawGetLoadedImageHeight(logo_image);
+                printf("%d\n",image_height);
+                tumDrawLoadedImage(logo_image, 100,
+                                     100);
+
+                
+                if (xSemaphoreTake(buttons.lock, 0) == pdTRUE) {
+                    if (buttons.buttons[KEYCODE(L)]) {
+                        buttons.buttons[KEYCODE(L)] = 0;
+                       xSemaphoreTake(my_board_instance.lock,portMAX_DELAY);
+                        my_board_instance.board_instance.level=(my_board_instance.board_instance.level+1)%10;
+                        xSemaphoreGive(my_board_instance.lock);
+                    }
+                xSemaphoreGive(buttons.lock);
+                }
+                
+                
+                if(xSemaphoreTake(my_board_instance.lock,portMAX_DELAY)==pdTRUE)
+                {
+                    sprintf(str, "[L]evel: %d",  my_board_instance.board_instance.level);
+                    tumDrawText(str,
+                        DEFAULT_FONT_SIZE * 2.5,
+                        DEFAULT_FONT_SIZE * 4.5, Black);
+
+                    xSemaphoreGive(my_board_instance.lock);
+                }
+                
+                tumDrawText("[O]ne Player",
+                    DEFAULT_FONT_SIZE * 2.5,
+                    DEFAULT_FONT_SIZE * 6.5, Black);
+
+                 tumDrawText("[T]wo Player",
+                    DEFAULT_FONT_SIZE * 2.5,
+                    DEFAULT_FONT_SIZE * 8.5, Black);
             
                 vTaskDelay((TickType_t)100);
 
@@ -1218,9 +1213,8 @@ void vMenuTask(void *pvParameters)
 void vDemoTask(void *pvParameters)
 {
     char str[16];
-    total_line=0;
-    level=5;
-    score=0;
+
+    unsigned int color;
     
     
     Que_cond_Y= xQueueCreate(1,sizeof(int));
@@ -1233,8 +1227,11 @@ void vDemoTask(void *pvParameters)
     my_struct_instance_frame.lock_frame=xSemaphoreCreateMutex();
     my_struct_instance_shape.lock_shape=xSemaphoreCreateMutex();
     my_struct_instance_tetri.lock_tetri=xSemaphoreCreateMutex();
-     my_struct_instance_Y.lock_Y=xSemaphoreCreateMutex();
-     my_struct_instance_X.lock_X=xSemaphoreCreateMutex();
+    my_struct_instance_Y.lock_Y=xSemaphoreCreateMutex();
+    //my_struct_instance_X.lock_X=xSemaphoreCreateMutex();
+    instance_next_shape.lock=xSemaphoreCreateMutex();
+    my_coord_instance.lock=xSemaphoreCreateMutex();
+    
 
     xTaskCreate(Task, "Task", mainGENERIC_STACK_SIZE, NULL,mainGENERIC_PRIORITY+2, &HandleTask);
     vTaskResume(HandleTask);
@@ -1266,7 +1263,7 @@ void vDemoTask(void *pvParameters)
                 xGetButtonInput(); // Update global input
                 xSemaphoreTake(ScreenLock, portMAX_DELAY);
 
-       
+                tumDrawClear(White);
         
                 if(xSemaphoreTake(my_struct_instance_frame.lock_frame,portMAX_DELAY)==pdTRUE)
                 {
@@ -1274,8 +1271,39 @@ void vDemoTask(void *pvParameters)
                     {
                         for(int j=0;j<21;j++)
                         {
-                            if(my_struct_instance_frame.Frame[i][j]==1)
-                                tumDrawFilledBox(20*i+200,20*j+20,20,20,Red);
+                            switch(my_struct_instance_frame.Frame[i][j]){
+                                case 1:
+                                    color=Gray;
+                                    break;
+                                case 2:
+                                    color=Red;
+                                    break;
+                                case 3:
+                                    color=Yellow;
+                                    break;
+                                case 4:
+                                    color=Green;
+                                    break;
+                                case 5:
+                                    color=Cyan;
+                                    break;
+                                case 6:
+                                    color=Blue;
+                                    break;
+                                case 7:
+                                    color=Purple;
+                                    break;
+                                case 8:
+                                    color=Pink;
+                                    break;
+                                default:
+                                    break;
+                            }
+                            if(my_struct_instance_frame.Frame[i][j]!=0)
+                            {
+                                 tumDrawFilledBox(20*i+200,20*j+20,20,20,color);
+                                tumDrawBox(20*i+200,20*j+20,20,20,Black);
+                            }
                             else
                                 tumDrawFilledBox(20*i+200,20*j+20,20,20,White);
                         }
@@ -1283,15 +1311,45 @@ void vDemoTask(void *pvParameters)
                 xSemaphoreGive(my_struct_instance_frame.lock_frame);
                 }
                 if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
-                {
+                {   
                     for(int i=0;i<12;i++)
                     {
                         for(int j=0;j<21;j++)
                         {
-                            if(my_struct_instance_grid.Grid[i][j]==1)
-                                tumDrawFilledBox(20*i+200,20*j+20,20,20,Red);
-                    //else
-                        //tumDrawFilledBox(20*i+200,20*j+20,20,20,White);
+                            switch(my_struct_instance_grid.Grid[i][j]){
+                                case 1:
+                                    color=Gray;
+                                    break;
+                                case 2:
+                                    color=Red;
+                                    break;
+                                case 3:
+                                    color=Yellow;
+                                    break;
+                                case 4:
+                                    color=Green;
+                                    break;
+                                case 5:
+                                    color=Cyan;
+                                    break;
+                                case 6:
+                                    color=Blue;
+                                    break;
+                                case 7:
+                                    color=Purple;
+                                    break;
+                                case 8:
+                                    color=Pink;
+                                    break;
+                                default:
+                                    break;
+                            }
+                            if(my_struct_instance_grid.Grid[i][j]!=0)
+                            {
+                                tumDrawFilledBox(20*i+200,20*j+20,20,20,color);
+                                tumDrawBox(20*i+200,20*j+20,20,20,Black);
+                            }
+                   
                 
                         }
                     }
@@ -1302,7 +1360,7 @@ void vDemoTask(void *pvParameters)
                 {
                     for (int j=0;j<21;j++)
                     {
-                        tumDrawFilledBox(20*i+200,20*j+20,20,20,TUMBlue);
+                        tumDrawFilledBox(20*i+200,20*j+20,20,20,Silver);
                     }
             
                 } 
@@ -1318,15 +1376,65 @@ void vDemoTask(void *pvParameters)
                     }       
                 }
 
+                if(xSemaphoreTake(instance_next_shape.lock,portMAX_DELAY)==pdTRUE)
+                { 
+                    for(int i=0; i<6;i++)
+                    {
+                        for(int j=0; j<5; j++)
+                        {
+                            switch(instance_next_shape.NextShape[i][j]){
+                                case 1:
+                                    color=Gray;
+                                    break;
+                                case 2:
+                                    color=Red;
+                                    break;
+                                case 3:
+                                    color=Yellow;
+                                    break;
+                                case 4:
+                                    color=Green;
+                                    break;
+                                case 5:
+                                    color=Cyan;
+                                    break;
+                                case 6:
+                                    color=Blue;
+                                    break;
+                                case 7:
+                                    color=Purple;
+                                    break;
+                                case 8:
+                                    color=Pink;
+                                    break;
+                                default:
+                                    break;
+                            }
+                            if(instance_next_shape.NextShape[i][j]!=0)
+                            {
+
+                                tumDrawFilledBox(20*(i+13)+200,20*(j+15)+20,20,20,color);
+                                tumDrawBox(20*(i+13)+200,20*(j+15)+20,20,20,Black);
+                            }
+                        }
+                    }
+                xSemaphoreGive(instance_next_shape.lock);
+                }
         
-                sprintf(str, "LINES: %d", total_line);
+                xSemaphoreTake(my_board_instance.lock,portMAX_DELAY);
+                sprintf(str, "LINES: %d", my_board_instance.board_instance.total_line);
                 tumDrawText(str, 20*13+210,20*2+20,Black);
 
-                sprintf(str, "LEVEL: %d", level);
+                sprintf(str, "LEVEL: %d", my_board_instance.board_instance.level);
                 tumDrawText(str, 20*13+210,20*5+20,Black);
 
-                sprintf(str, "SCORE: %d", score);
+                sprintf(str, "SCORE: %d", my_board_instance.board_instance.score);
                 tumDrawText(str, 20*13+210,20*8+20,Black);
+                xSemaphoreGive(my_board_instance.lock);
+                
+
+                
+                tumDrawText("[E]xit [P]ause [R]estart", 20*11+210,0,Black);
         
     
                 
@@ -1396,6 +1504,10 @@ void vPausedStateTask(void *pvParameters)
 int main(int argc, char *argv[])
 {
     char *bin_folder_path = tumUtilGetBinFolderPath(argv[0]);
+
+    my_board_instance.lock=xSemaphoreCreateMutex();
+    logo_image= tumDrawLoadImage(LOGO_FILENAME);
+
 
     printf("Initializing: ");
 
