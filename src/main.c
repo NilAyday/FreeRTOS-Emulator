@@ -41,7 +41,7 @@
 #define mainGENERIC_STACK_SIZE ((unsigned short)2560)
 #define STATE_DEBOUNCE_DELAY 300
 
-#define LOGO_FILENAME "../resources/images/Untitled.bmp"
+#define LOGO_FILENAME "../resources/images/tetris.png"
 
 
 
@@ -1159,14 +1159,16 @@ void vMenuTask(void *pvParameters)
                 xGetButtonInput(); // Update global input
                 xSemaphoreTake(ScreenLock, portMAX_DELAY);
 
-                tumDrawClear(White); // Clear screen
+                tumDrawClear(Grey); // Clear screen
        // printf("menü\n");
                 
                  static int image_height;
+                 static int image_width;
                 image_height = tumDrawGetLoadedImageHeight(logo_image);
-                printf("%d\n",image_height);
-                tumDrawLoadedImage(logo_image, 100,
-                                     100);
+                image_width = tumDrawGetLoadedImageWidth(logo_image);
+                
+                tumDrawLoadedImage(logo_image, image_width+ 200 - SCREEN_WIDTH,
+                                     SCREEN_HEIGHT - 10 - image_height);
 
                 
                 if (xSemaphoreTake(buttons.lock, 0) == pdTRUE) {
@@ -1185,18 +1187,18 @@ void vMenuTask(void *pvParameters)
                     sprintf(str, "[L]evel: %d",  my_board_instance.board_instance.level);
                     tumDrawText(str,
                         DEFAULT_FONT_SIZE * 2.5,
-                        DEFAULT_FONT_SIZE * 4.5, Black);
+                        DEFAULT_FONT_SIZE * 4.5, White);
 
                     xSemaphoreGive(my_board_instance.lock);
                 }
                 
                 tumDrawText("[O]ne Player",
                     DEFAULT_FONT_SIZE * 2.5,
-                    DEFAULT_FONT_SIZE * 6.5, Black);
+                    DEFAULT_FONT_SIZE * 6.5, White);
 
                  tumDrawText("[T]wo Player",
                     DEFAULT_FONT_SIZE * 2.5,
-                    DEFAULT_FONT_SIZE * 8.5, Black);
+                    DEFAULT_FONT_SIZE * 8.5, White);
             
                 vTaskDelay((TickType_t)100);
 
@@ -1457,7 +1459,7 @@ int main(int argc, char *argv[])
     char *bin_folder_path = tumUtilGetBinFolderPath(argv[0]);
 
     my_board_instance.lock=xSemaphoreCreateMutex();
-    logo_image= tumDrawLoadImage(LOGO_FILENAME);
+   
 
 
     printf("Initializing: ");
@@ -1500,6 +1502,8 @@ int main(int argc, char *argv[])
         PRINT_ERROR("Could not open state queue");
         goto err_state_queue;
     }
+
+    logo_image= tumDrawLoadImage(LOGO_FILENAME);
 
     if (xTaskCreate(basicSequentialStateMachine, "StateMachine",
                     mainGENERIC_STACK_SIZE * 2, NULL,
