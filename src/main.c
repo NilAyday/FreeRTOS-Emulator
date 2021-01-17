@@ -343,7 +343,7 @@ void Grid()
 {
     if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
     {
-           for(int i=2; i<23;i++) 
+           for(int i=0; i<23;i++) 
            {
                my_struct_instance_grid.Grid[0][i]=1;
                my_struct_instance_grid.Grid[11][i]=1;
@@ -1084,7 +1084,7 @@ void UpdateX()
                         }
                 }
             } 
-            if ((buttons.buttons[4] & Flag_A)==0) 
+            if ((buttons.buttons[4]) & (Flag_A==0))
             { 
                 Flag_A=1;
                 rotate_tetrimino_R();    
@@ -1094,7 +1094,7 @@ void UpdateX()
                 }
             }else Flag_A=0;
 
-            if ((buttons.buttons[5] & Flag_B)==0) 
+            if ((buttons.buttons[5]) & (Flag_B==0))
             { 
                 Flag_B=1;
                 rotate_tetrimino_L();    
