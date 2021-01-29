@@ -54,6 +54,7 @@ static TaskHandle_t BufferSwap = NULL;
 static TaskHandle_t DemoTask = NULL;
 static TaskHandle_t MenuTask = NULL;
 TaskHandle_t PausedStateTask = NULL;
+TaskHandle_t GameOverStateTask = NULL;
 TaskHandle_t NoConnectionTask = NULL;
 static TaskHandle_t HandleTask= NULL;
 static TaskHandle_t HandleUpdateY= NULL;
@@ -121,6 +122,7 @@ struct board{
     int level;
     int total_line;
     int score;
+    int max[3];
 };
 struct my_board{
     SemaphoreHandle_t lock;
@@ -474,133 +476,97 @@ initial_state:
         if (state_changed) {
             switch (input) {
                 case STATE_ONE:
-                    if (DemoTask) {
-                        vTaskSuspend(DemoTask);
-                    }
-                    if(UDPControlTask)
-                    {
-                        vTaskSuspend(UDPControlTask);
-                         vTaskSuspend(NoConnectionTask);
-                    }
-                    if (MenuTask) {
-                        vTaskResume(MenuTask);
-                        //vTaskResume(UDPControlTask);
-                     }   
+                    printf("state ONE\n");
+                    if (DemoTask)         vTaskSuspend(DemoTask);
+                    if (HandleTask)       vTaskSuspend(HandleTask);
+                    if (HandleUpdateX)    vTaskSuspend(HandleUpdateX);
+                    if (HandleUpdateY)    vTaskSuspend(HandleUpdateY);
+                    if (NoConnectionTask) vTaskSuspend(NoConnectionTask);
+                    if (UDPControlTask)   vTaskSuspend(UDPControlTask);
+                    if (PausedStateTask)  vTaskSuspend(PausedStateTask);
+                    if (MenuTask)         vTaskResume(MenuTask);
+                    xSemaphoreTake(instance_two_player.lock,0);
+                    instance_two_player.flag=0;
+                    xSemaphoreGive(instance_two_player.lock); 
                     break;
                 case 'O':
-                    if (MenuTask) {
-                        vTaskSuspend(MenuTask);
-                        
-                    }
-                    if(UDPControlTask)
-                    {
-                        vTaskSuspend(UDPControlTask);
-                    }
-                    if(NoConnectionTask)
-                    {
-                        vTaskSuspend(NoConnectionTask);
-                    }
-                    if(DemoTask){
-                        xSemaphoreTake(instance_two_player.lock,0);
-                        instance_two_player.flag=0;
-                        xSemaphoreGive(instance_two_player.lock);
-                        vTaskResume(DemoTask);
-                        vTaskResume(HandleTask);
-                        vTaskResume(HandleUpdateX);
-                        vTaskResume(HandleUpdateY);
-                        //vTaskResume(UDPControlTask);
-                    }
+                    printf("state O\n");
+                    if (MenuTask)         vTaskSuspend(MenuTask);
+                    if (DemoTask)         vTaskResume(DemoTask);
+                    if (HandleTask)       vTaskResume(HandleTask);
+                    if (HandleUpdateX)    vTaskResume(HandleUpdateX);
+                    if (HandleUpdateY)    vTaskResume(HandleUpdateY);
                     break;
                 case 'T':
-                    if (MenuTask) {
-                        vTaskSuspend(MenuTask);
-                    }
-                    if(DemoTask){
-                        vTaskResume(UDPControlTask);
-                        vTaskResume(DemoTask);
-                        vTaskResume(HandleTask);
-                        vTaskResume(HandleUpdateX);
-                        vTaskResume(HandleUpdateY);
-                        xSemaphoreTake(instance_two_player.lock,0);
-                        instance_two_player.flag=1;
-                        xSemaphoreGive(instance_two_player.lock);
-                    }
+                    printf("state T\n");
+                    if (MenuTask)         vTaskSuspend(MenuTask);
+                    if (UDPControlTask)   vTaskResume(UDPControlTask);
                     break;
                 case 'E':
-                   if (DemoTask) {
-                        vTaskSuspend(DemoTask);
-                        vTaskSuspend(HandleTask);
-                        vTaskSuspend(HandleUpdateX);
-                        vTaskSuspend(HandleUpdateY);
-                        reset();
-                    }
-                    if(NoConnectionTask)
-                        vTaskSuspend(NoConnectionTask);
-                    if(UDPControlTask)
-                    {
-                        vTaskSuspend(UDPControlTask);
-                    }
-                    if (MenuTask) {
-                        vTaskResume(MenuTask);
-                    }   
+                    printf("state E\n");
+                    if (DemoTask)         vTaskSuspend(DemoTask);
+                    if (HandleTask)       vTaskSuspend(HandleTask);
+                    if (HandleUpdateX)    vTaskSuspend(HandleUpdateX);
+                    if (HandleUpdateY)    vTaskSuspend(HandleUpdateY);
+                    if (NoConnectionTask) vTaskSuspend(NoConnectionTask);
+                    if (UDPControlTask)   vTaskSuspend(UDPControlTask);
+                    if (GameOverStateTask) vTaskSuspend(GameOverStateTask);
+                    if (MenuTask)         vTaskResume(MenuTask);
+                    xSemaphoreTake(instance_two_player.lock,0);
+                    instance_two_player.flag=0;
+                    xSemaphoreGive(instance_two_player.lock);
+                    reset();
                     break;
                 case 'R':
-                    if(DemoTask) {
-                        vTaskSuspend(DemoTask);
-                        reset();
-                        vTaskResume(DemoTask);
-                    }
+                    printf("State R\n");
+                    reset();
                     break;
                 case 'P':
-                    if(DemoTask) {
-                        if(flag_pause==0)
-                        {
-                            vTaskSuspend(DemoTask);
-                            vTaskSuspend(HandleTask);
-                            vTaskSuspend(HandleUpdateX);
-                            vTaskSuspend(HandleUpdateY);
-                            vTaskResume(PausedStateTask);
-                            flag_pause=1;
-                        }
-                        else
-                        {
-                            vTaskSuspend(PausedStateTask);
-                            vTaskResume(DemoTask);
-                            vTaskResume(HandleTask);
-                            vTaskResume(HandleUpdateX);
-                            vTaskResume(HandleUpdateY);
-                            flag_pause=0;
-                        } 
+                    printf("state P\n");
+                    if(flag_pause==0)
+                    {
+                        if (DemoTask)         vTaskSuspend(DemoTask);
+                        if (HandleTask)       vTaskSuspend(HandleTask);
+                        if (HandleUpdateX)    vTaskSuspend(HandleUpdateX);
+                        if (HandleUpdateY)    vTaskSuspend(HandleUpdateY);
+                        if (PausedStateTask)  vTaskResume(PausedStateTask);
+                        flag_pause=1;
                     }
+                    else
+                    {
+                        if (PausedStateTask)  vTaskSuspend(PausedStateTask);
+                        if (DemoTask)         vTaskResume(DemoTask);
+                        if (HandleTask)       vTaskResume(HandleTask);
+                        if (HandleUpdateX)    vTaskResume(HandleUpdateX);
+                        if (HandleUpdateY)    vTaskResume(HandleUpdateY);
+                        flag_pause=0;
+                    } 
                     break;
                 case 'C':
-                    if(DemoTask) {
-                        vTaskSuspend(DemoTask);
-                        vTaskSuspend(HandleTask);
-                        vTaskSuspend(HandleUpdateX);
-                        vTaskSuspend(HandleUpdateY);
-                    }
-                    if(UDPControlTask)
-                    {
-                         vTaskSuspend(UDPControlTask);
-                    }
-                    if(NoConnectionTask)
-                        vTaskResume(NoConnectionTask);
+                    printf("state C\n");
+                    if(UDPControlTask)   vTaskSuspend(UDPControlTask);
+                    if(NoConnectionTask) vTaskResume(NoConnectionTask);
                     break;
-                /*case 'M':
-                    if (DemoTask) {
-                        
-                    }
-                    if(NoConnectionTask)
-                         vTaskSuspend(NoConnectionTask);
-                    if(UDPControlTask)
-                    {
-                        vTaskSuspend(UDPControlTask);
-                    }
-                    if (MenuTask) {
-                        vTaskResume(MenuTask);
-                    }   
-                    break;*/
+                case 'S':
+                    printf("state S\n");
+                    if (NoConnectionTask) vTaskSuspend(NoConnectionTask);
+                    if (DemoTask)         vTaskResume(DemoTask);
+                    if (HandleTask)       vTaskResume(HandleTask);
+                    if (HandleUpdateX)    vTaskResume(HandleUpdateX);
+                    if (HandleUpdateY)    vTaskResume(HandleUpdateY); 
+                    if (UDPControlTask)   vTaskResume(UDPControlTask);
+                    xSemaphoreTake(instance_two_player.lock,0);
+                    instance_two_player.flag=1;
+                    xSemaphoreGive(instance_two_player.lock);
+                    break;
+                case 'G':
+                    printf("state G\n");
+                    if (DemoTask)         vTaskSuspend(DemoTask);
+                    if (HandleTask)       vTaskSuspend(HandleTask);
+                    if (HandleUpdateX)    vTaskSuspend(HandleUpdateX);
+                    if (HandleUpdateY)    vTaskSuspend(HandleUpdateY);
+                    if(GameOverStateTask) vTaskResume(GameOverStateTask);
+                    break;
                 default:
                     break;
             }
@@ -634,6 +600,7 @@ static int vCheckStateInputMenu(void)
         if (buttons.buttons[KEYCODE(O)]) {
             buttons.buttons[KEYCODE(O)] = 0;
             if (StateQueue) {
+                printf("O ya badildi\n");
                 xSemaphoreGive(buttons.lock);
                 next_state_signal='O';
                 xQueueSend(StateQueue, &next_state_signal, 0);
@@ -706,6 +673,15 @@ static int vCheckConnectionTask(void)
     unsigned char next_state_signal;
     
     xSemaphoreTake(instance_two_player.lock,portMAX_DELAY);
+            if(instance_two_player.flag==3)
+            {
+               if (StateQueue) {
+                xSemaphoreGive(instance_two_player.lock);
+                next_state_signal='S';
+                xQueueSend(StateQueue, &next_state_signal, 0);
+                return 0;
+                }
+            }
             if(instance_two_player.flag==2)
             {
                if (StateQueue) {
@@ -800,41 +776,43 @@ void rotate_tetrimino_L()
     {
         if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
         {
-        
-            for(int i=0; i<5; i++)
+            if(my_struct_instance_shape.Shape[1][2]!=5)
             {
-                for(int j=0; j<5; j++)
+                for(int i=0; i<5; i++)
                 {
+                    for(int j=0; j<5; j++)
+                    {
+                        
+                        tmp[i][j]=my_struct_instance_shape.Shape[i][j];
                     
-                    tmp[i][j]=my_struct_instance_shape.Shape[i][j];
-                   
+                    }
                 }
-            }
-            for(int x=0; x<5; x++)
-            {
-                for(int y=x; y<5-x-1;y++)
+                for(int x=0; x<5; x++)
                 {
-                
-                    int temp=tmp[x][y];
-                    tmp[x][y]=tmp[y][5-1-x];
-                    tmp[y][5-1-x]=tmp[5-1-x][5-1-y];
-                    tmp[5-1-x][5-1-y]=tmp[5-1-y][x];
-                    tmp[5-1-y][x]=temp;
-                
+                    for(int y=x; y<5-x-1;y++)
+                    {
+                    
+                        int temp=tmp[x][y];
+                        tmp[x][y]=tmp[y][5-1-x];
+                        tmp[y][5-1-x]=tmp[5-1-x][5-1-y];
+                        tmp[5-1-x][5-1-y]=tmp[5-1-y][x];
+                        tmp[5-1-y][x]=temp;
+                    
+                    }
                 }
-            }
-            for(int i=0; i<6; i++)
-            {
-                for(int j=0; j<5; j++)
+                for(int i=0; i<6; i++)
                 {
-                    my_struct_instance_shape.Shape[i][j]=0;
+                    for(int j=0; j<5; j++)
+                    {
+                        my_struct_instance_shape.Shape[i][j]=0;
+                    }
                 }
-            }
-            for(int i=0; i<5; i++)
-            {
-                for(int j=0; j<5; j++)
+                for(int i=0; i<5; i++)
                 {
-                    my_struct_instance_shape.Shape[i][j]=tmp[i][j];
+                    for(int j=0; j<5; j++)
+                    {
+                        my_struct_instance_shape.Shape[i][j]=tmp[i][j];
+                    }
                 }
             }
         xSemaphoreGive(my_struct_instance_shape.lock_shape);
@@ -857,39 +835,41 @@ void rotate_tetrimino_R()
     {
         if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
         {
-        
-            for(int i=0; i<5; i++)
+            if(my_struct_instance_shape.Shape[1][2]!=5)
             {
-                for(int j=0; j<5; j++)
+                for(int i=0; i<5; i++)
                 {
-                    tmp[i][j]=my_struct_instance_shape.Shape[i][j];
+                    for(int j=0; j<5; j++)
+                    {
+                        tmp[i][j]=my_struct_instance_shape.Shape[i][j];
+                    }
+                        
                 }
+                for(int i=0; i<5/2; i++)
+                {
+                    for(int j=i; j<5-i-1;j++)
+                    {
                     
-            }
-            for(int i=0; i<5/2; i++)
-            {
-                for(int j=i; j<5-i-1;j++)
-                {
-                
-                    int temp=tmp[i][j];
-                    tmp[i][j]=tmp[5-1-j][i];
-                    tmp[5-1-j][i]=tmp[5-1-i][5-1-j];
-                    tmp[5-1-i][5-1-j]=tmp[j][5-1-i];
-                    tmp[j][5-1-i]=temp;
+                        int temp=tmp[i][j];
+                        tmp[i][j]=tmp[5-1-j][i];
+                        tmp[5-1-j][i]=tmp[5-1-i][5-1-j];
+                        tmp[5-1-i][5-1-j]=tmp[j][5-1-i];
+                        tmp[j][5-1-i]=temp;
+                    }
                 }
-            }
-            for(int i=0; i<6; i++)
-            {
-                for(int j=0; j<5; j++)
+                for(int i=0; i<6; i++)
                 {
-                    my_struct_instance_shape.Shape[i][j]=0;
+                    for(int j=0; j<5; j++)
+                    {
+                        my_struct_instance_shape.Shape[i][j]=0;
+                    }
                 }
-            }
-            for(int i=0; i<5; i++)
-            {
-                for(int j=0; j<5; j++)
+                for(int i=0; i<5; i++)
                 {
-                    my_struct_instance_shape.Shape[i][j]=tmp[i][j];
+                    for(int j=0; j<5; j++)
+                    {
+                        my_struct_instance_shape.Shape[i][j]=tmp[i][j];
+                    }
                 }
             }
         xSemaphoreGive(my_struct_instance_shape.lock_shape);
@@ -983,6 +963,7 @@ void UpdateY()
     int delay;
     int Flag_D=1;
     int cx,cy;
+    int level;
 
     while(1)
     {
@@ -1010,31 +991,38 @@ void UpdateY()
                 }
         }
         
-        
+        xSemaphoreTake(my_board_instance.lock,portMAX_DELAY);
+        if(level!=my_board_instance.board_instance.level)
+        {
+            level=my_board_instance.board_instance.level;
+            Flag_D=1;
+        }
+        xSemaphoreGive(my_board_instance.lock);
 
         if (xSemaphoreTake(buttons.lock, 0) == pdTRUE) {
             xGetButtonInput();
             xSemaphoreGive(buttons.lock);
 
-            xSemaphoreTake(my_board_instance.lock,portMAX_DELAY);
+    
             if (buttons.buttons[81]) { 
                     if(Flag_D==0)
                     {
                         Flag_D=1;
-                        delay=(600-my_board_instance.board_instance.level*56)/2; 
+                        delay=(500-level*40)/2; 
                     }
                     
-                }else 
+            }else 
+            {
+                if(Flag_D==1)
                 {
-                    if(Flag_D==1)
-                    {
-                        Flag_D=0;
-                        delay=600-my_board_instance.board_instance.level*56;
-                    }
-                } 
-            xSemaphoreGive(my_board_instance.lock);
+                    Flag_D=0;
+                    delay=500-level*40;
+                }
+            } 
+            
          
         }
+        printf("Delay: %d \n",delay);
         vTaskDelay(pdMS_TO_TICKS(delay));
     }
 }
@@ -1170,12 +1158,23 @@ void puf(void)
             break;
         
     }
+    
+
     my_board_instance.board_instance.score=my_board_instance.board_instance.score+factor*(my_board_instance.board_instance.level+1);
+
+    if((my_board_instance.board_instance.score/60)>my_board_instance.board_instance.level)
+    {
+        my_board_instance.board_instance.level++;
+        if (my_board_instance.board_instance.level>9) my_board_instance.board_instance.level=9;
+    }
+    
+        //my_board_instance.board_instance.level=my_board_instance.board_instance.level+my_board_instance.board_instance.score/100;
     xSemaphoreGive(my_board_instance.lock);
 }
 
 void Task(void *pvParameters)
 {
+    unsigned char next_state_signal;
     int Tetrimino_number=1;
     int flag=0;
 
@@ -1186,7 +1185,24 @@ void Task(void *pvParameters)
     
     while(1)
     {
-        move_tetrimino();
+        if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
+        {
+            if ((my_struct_instance_grid.Grid[8][3]==0) & (my_struct_instance_grid.Grid[6][3]==0) & (my_struct_instance_grid.Grid[7][3]==0) &
+                (my_struct_instance_grid.Grid[8][4]==0) & (my_struct_instance_grid.Grid[6][4]==0) & (my_struct_instance_grid.Grid[7][4]==0))
+            {
+                flag=0;
+            }
+            else
+            {
+                flag=1;
+            }
+                            
+            xSemaphoreGive(my_struct_instance_grid.lock_grid);
+        }    
+        if(flag==0)
+            move_tetrimino();
+        
+
 
             if(xSemaphoreTake(my_struct_instance_frame.lock_frame,portMAX_DELAY)==pdTRUE)
             {
@@ -1198,21 +1214,7 @@ void Task(void *pvParameters)
                     {
                         my_struct_instance_Y.my_Y_instance.condition_Y2=0;
                        
-                        if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
-                        {
-                            if ((my_struct_instance_grid.Grid[8][5]==0) & (my_struct_instance_grid.Grid[6][5]==0) & (my_struct_instance_grid.Grid[7][5]==0) &
-                                (my_struct_instance_grid.Grid[8][4]==0) & (my_struct_instance_grid.Grid[6][4]==0) & (my_struct_instance_grid.Grid[7][4]==0))
-                            {
-                                flag=0;
-                            }
-                            else
-                            {
-                                flag=1;
-                            }
-                            
-                            xSemaphoreGive(my_struct_instance_grid.lock_grid);
-                        }    
-
+                        
                         if((move_condition(5,0)==0) & (flag==0))
                         {
                             Tetrimino_number=(Tetrimino_number+1)%7;    
@@ -1251,9 +1253,110 @@ void Task(void *pvParameters)
             xSemaphoreGive(my_struct_instance_frame.lock_frame);
           
             }
-
+        if(flag==1)
+        {
+             next_state_signal='G';
+                    xQueueSendToFront(
+                        StateQueue,
+                        &next_state_signal,
+                        portMAX_DELAY);
+        }
         vTaskDelay(25);
        
+    }
+}
+
+static const char *gameover_text = "GAME OVER";
+static int gameover_text_width;
+static int gameover_text_height;
+
+void vGameOverStateTask(void *pvParameters)
+{
+    tumGetTextSize((char *)gameover_text, &gameover_text_width, &gameover_text_height);
+    unsigned char next_state_signal;
+    char str[16];
+    int flag=0;
+
+    while (1) {
+        if (DrawSignal) {
+            if (xSemaphoreTake(DrawSignal, portMAX_DELAY) ==
+                pdTRUE) {
+                xGetButtonInput(); // Update global button data
+
+                if (xSemaphoreTake(buttons.lock, 0) == pdTRUE) {
+                    if (buttons.buttons[KEYCODE(E)]) {
+                        xSemaphoreGive(buttons.lock);
+                        next_state_signal='E';
+                        flag=0;
+                        xQueueSendToFront(
+                            StateQueue,
+                            &next_state_signal,
+                            portMAX_DELAY);
+                    }
+                    xSemaphoreGive(buttons.lock);
+                }
+          
+                
+
+                if (xSemaphoreTake(ScreenLock, 0) == pdTRUE) {
+                    
+                    tumDrawClear(Silver);
+                    tumDrawText((char *)gameover_text,
+                                SCREEN_WIDTH / 2 -
+                                gameover_text_width /
+                                2,
+                                SCREEN_HEIGHT/4, Red);
+                }
+
+                 xSemaphoreTake(my_board_instance.lock,portMAX_DELAY);
+                if(flag==0)
+                {
+                    if( my_board_instance.board_instance.score > my_board_instance.board_instance.max[2])
+                    {
+                        if( my_board_instance.board_instance.score > my_board_instance.board_instance.max[1])
+                        {
+                            if( my_board_instance.board_instance.score > my_board_instance.board_instance.max[0])
+                            {
+                                my_board_instance.board_instance.max[2]=my_board_instance.board_instance.max[1];
+                                my_board_instance.board_instance.max[1]=my_board_instance.board_instance.max[0];
+                                my_board_instance.board_instance.max[0]=my_board_instance.board_instance.score;
+                            }
+                            else
+                            {
+                                my_board_instance.board_instance.max[2]=my_board_instance.board_instance.max[1];
+                                my_board_instance.board_instance.max[1]=my_board_instance.board_instance.score;
+                            }
+                            
+                        }
+                        else
+                        {
+                            my_board_instance.board_instance.max[2]=my_board_instance.board_instance.score;
+                        }
+                        
+                    }
+                    
+                    flag=1;
+                }
+               
+                tumDrawText("[E]xit",50,20,Black);
+                
+                tumDrawText("High Scores", SCREEN_WIDTH/2-gameover_text_width /2,SCREEN_HEIGHT/2, White);
+                sprintf(str,"%d",my_board_instance.board_instance.max[0] );
+                tumDrawText(str, SCREEN_WIDTH/2-gameover_text_width /2,SCREEN_HEIGHT/2+gameover_text_height, White);
+                sprintf(str,"%d",my_board_instance.board_instance.max[1] );
+                tumDrawText(str, SCREEN_WIDTH/2-gameover_text_width /2,SCREEN_HEIGHT/2+2*gameover_text_height, White);
+                sprintf(str,"%d",my_board_instance.board_instance.max[2] );
+                tumDrawText(str, SCREEN_WIDTH/2-gameover_text_width /2,SCREEN_HEIGHT/2+3*gameover_text_height, White);
+
+                xSemaphoreGive(my_board_instance.lock);
+
+                xSemaphoreGive(ScreenLock);
+
+
+
+                vTaskDelay(100);
+            }
+        }
     }
 }
 
@@ -1348,7 +1451,7 @@ void vUDPControlTask(void *pvParameters)
     char List[10][50];
     int i=0;
     int j=0;
-    int com_flag=1;
+    int com_flag=0;
 
      char *addr =NULL;
 
@@ -1359,25 +1462,47 @@ void vUDPControlTask(void *pvParameters)
 
     
     
-    aIOSocketPut(UDP, NULL, UDP_TRANSMIT_PORT, "LIST",strlen("LIST"));
-    aIOSocketPut(UDP, NULL, UDP_TRANSMIT_PORT, "MODE",strlen("MODE"));
-    aIOSocketPut(UDP, NULL, UDP_TRANSMIT_PORT, "SEED",strlen("SEED"));
+    //aIOSocketPut(UDP, NULL, UDP_TRANSMIT_PORT, "LIST",strlen("LIST"));
+    //aIOSocketPut(UDP, NULL, UDP_TRANSMIT_PORT, "MODE",strlen("MODE"));
+    //aIOSocketPut(UDP, NULL, UDP_TRANSMIT_PORT, "SEED",strlen("SEED"));
 
 
     while(1)
     {
+        //printf("udpcontrol task calisiyor\n");
+        xSemaphoreTake(instance_two_player.lock,0);
+        if(instance_two_player.flag==0)
+        {
+            aIOSocketPut(UDP, NULL, UDP_TRANSMIT_PORT, "LIST",strlen("LIST"));
+            aIOSocketPut(UDP, NULL, UDP_TRANSMIT_PORT, "MODE",strlen("MODE"));
+            aIOSocketPut(UDP, NULL, UDP_TRANSMIT_PORT, "SEED",strlen("SEED"));
+            instance_two_player.flag=4;
+            com_flag=0;
+            //printf("1\n");
+        }
+        xSemaphoreGive(instance_two_player.lock);
         
         if(xQueueReceive(ListQueue,&List[i],0)==pdTRUE)
         {
             i++;   
             com_flag++;
         }
-        if (com_flag<2)
+        if (com_flag==0)
         {
+            com_flag=1;
             xSemaphoreTake(instance_two_player.lock,0);
             instance_two_player.flag=2;
             xSemaphoreGive(instance_two_player.lock);
-        }    
+            printf("comminucation yok\n");
+        } 
+        if (com_flag==2)
+        {
+            com_flag=3;
+            xSemaphoreTake(instance_two_player.lock,0);
+            instance_two_player.flag=3;
+            xSemaphoreGive(instance_two_player.lock);
+            printf("comminucation var\n");  
+        } 
 
         if (xSemaphoreTake(buttons.lock, 0) == pdTRUE) {
             if (buttons.buttons[KEYCODE(M)]) {
@@ -1398,9 +1523,10 @@ void vUDPControlTask(void *pvParameters)
         {
             aIOSocketPut(UDP, NULL, UDP_TRANSMIT_PORT, send_value,strlen(send_value));
         }
-        vTaskDelay((TickType_t)50);
-
         vCheckConnectionTask();
+        vTaskDelay((TickType_t)50);
+        
+        
     }
 }
 void vMenuTask(void *pvParameters)
@@ -1439,7 +1565,7 @@ void vMenuTask(void *pvParameters)
                 
                 xSemaphoreGive(buttons.lock);
                 }
-                
+            
                 if(xSemaphoreTake(my_board_instance.lock,portMAX_DELAY)==pdTRUE)
                 {
                     sprintf(str, "[L]evel: %d",  my_board_instance.board_instance.level);
@@ -1465,6 +1591,63 @@ void vMenuTask(void *pvParameters)
             }
          
     }
+}
+
+#define FPS_AVERAGE_COUNT 50
+#define FPS_FONT "IBMPlexSans-Bold.ttf"
+
+void vDrawFPS(void)
+{
+    static unsigned int periods[FPS_AVERAGE_COUNT] = { 0 };
+    static unsigned int periods_total = 0;
+    static unsigned int index = 0;
+    static unsigned int average_count = 0;
+    static TickType_t xLastWakeTime = 0, prevWakeTime = 0;
+    static char str[10] = { 0 };
+    static int text_width;
+    int fps = 0;
+    font_handle_t cur_font = tumFontGetCurFontHandle();
+
+    if (average_count < FPS_AVERAGE_COUNT) {
+        average_count++;
+    }
+    else {
+        periods_total -= periods[index];
+    }
+
+    xLastWakeTime = xTaskGetTickCount();
+
+    if (prevWakeTime != xLastWakeTime) {
+        periods[index] =
+            configTICK_RATE_HZ / (xLastWakeTime - prevWakeTime);
+        prevWakeTime = xLastWakeTime;
+    }
+    else {
+        periods[index] = 0;
+    }
+
+    periods_total += periods[index];
+
+    if (index == (FPS_AVERAGE_COUNT - 1)) {
+        index = 0;
+    }
+    else {
+        index++;
+    }
+
+    fps = periods_total / average_count;
+
+    tumFontSelectFontFromName(FPS_FONT);
+
+    sprintf(str, "FPS: %2d", fps);
+
+    if (!tumGetTextSize((char *)str, &text_width, NULL))
+         tumDrawText(str, SCREEN_WIDTH - text_width -40,
+                              SCREEN_HEIGHT - DEFAULT_FONT_SIZE * 1.5,
+                              Black);
+
+    tumFontSelectFontFromHandle(cur_font);
+    tumFontPutFontHandle(cur_font);
 }
 
 int switch_color(int x)
@@ -1656,7 +1839,14 @@ void vDemoTask(void *pvParameters)
                 
 
                 
-                tumDrawText("[E]xit [P]ause [R]estart", 20*11+210,20,Black);
+                tumDrawText("[E]xit [P]ause [R]estart", 50,20,Black);
+
+                tumDrawText("[->] Right",50,330,Black);
+                tumDrawText("[<-] Left",50,360,Black);
+                tumDrawText(" | ",57,385,Black);
+                tumDrawText("[ v ] Faster",50,390,Black);
+                tumDrawText("[A] Right Rotate",50,420,Black);
+                tumDrawText("[B] Left Rotate",50,450,Black);
 
                 xSemaphoreTake(instance_two_player.lock,portMAX_DELAY);
                 if(instance_two_player.flag==1)
@@ -1671,28 +1861,31 @@ void vDemoTask(void *pvParameters)
                 }
                 xSemaphoreGive(instance_two_player.lock);
                
-            
+
 
                 //tumDrawUpdateScreen(); // Refresh the screen to draw string
-
+                vDrawFPS();
         // Basic sleep of 1000 milliseconds
                 xSemaphoreGive(ScreenLock);
 
                 // Get input and check for state change
                 vCheckStateInputTask();
         
-                vTaskDelay((TickType_t)100);
+                
+                vTaskDelay((TickType_t)10);
             }
     }
 }
 
 static const char *paused_text = "PAUSED";
 static int paused_text_width;
+static int paused_text_height;
 
 void vPausedStateTask(void *pvParameters)
 {
-    tumGetTextSize((char *)paused_text, &paused_text_width, NULL);
+    tumGetTextSize((char *)paused_text, &paused_text_width, &paused_text_height);
     unsigned char next_state_signal;
+    char str[16];
 
     while (1) {
         if (DrawSignal) {
@@ -1715,16 +1908,42 @@ void vPausedStateTask(void *pvParameters)
                 // Don't suspend task until current execution loop has finished
                 // and held resources have been released
                 taskENTER_CRITICAL();
+                
 
                 if (xSemaphoreTake(ScreenLock, 0) == pdTRUE) {
-                    tumDrawClear(White);
-
+                    
+                    tumDrawClear(Silver);
                     tumDrawText((char *)paused_text,
                                 SCREEN_WIDTH / 2 -
                                 paused_text_width /
                                 2,
                                 SCREEN_HEIGHT / 2, Red);
                 }
+
+                
+
+                  for(int i=13;i<19;i++)
+                {
+                    tumDrawFilledBox(20*i+200,20*5+20,20,20,Silver);
+                    tumDrawFilledBox(20*i+200,20*8+20,20,20,Silver);
+                    tumDrawFilledBox(20*i+200,20*11+20,20,20,Silver);
+                         
+                }
+
+            
+                
+                xSemaphoreTake(my_board_instance.lock,portMAX_DELAY);
+                sprintf(str, "LINES: %d", my_board_instance.board_instance.total_line);
+                tumDrawText(str, SCREEN_WIDTH/2-paused_text_width /2,SCREEN_HEIGHT/2+2*paused_text_height,White);
+
+                sprintf(str, "LEVEL: %d", my_board_instance.board_instance.level);
+                tumDrawText(str, SCREEN_WIDTH/2-paused_text_width /2,SCREEN_HEIGHT/2+3*paused_text_height,White);
+
+                sprintf(str, "SCORE: %d", my_board_instance.board_instance.score);
+                tumDrawText(str, SCREEN_WIDTH/2-paused_text_width /2,SCREEN_HEIGHT/2+4*paused_text_height,White);
+                xSemaphoreGive(my_board_instance.lock);
+
+                tumDrawText("[P]lay",50,20,Black);
 
                 xSemaphoreGive(ScreenLock);
 
@@ -1757,7 +1976,7 @@ void vNoConnectionTask(void *pvParameters)
                 if (xSemaphoreTake(buttons.lock, 0) == pdTRUE) {
                     if (buttons.buttons[KEYCODE(E)]) {
                         xSemaphoreGive(buttons.lock);
-                        next_state_signal=STATE_ONE;
+                        next_state_signal='E';
                         xQueueSendToFront(
                             StateQueue,
                             &next_state_signal,
@@ -1771,17 +1990,18 @@ void vNoConnectionTask(void *pvParameters)
                 taskENTER_CRITICAL();
 
                 if (xSemaphoreTake(ScreenLock, 0) == pdTRUE) {
-                    tumDrawClear(White);
+                    tumDrawClear(Silver);
 
                     tumDrawText((char *)connection_text,
                                 SCREEN_WIDTH / 2 -
                                 connection_text_width /
                                 2,
                                 SCREEN_HEIGHT / 2, Red);
+                    xSemaphoreGive(ScreenLock);
                 }
 
-                xSemaphoreGive(ScreenLock);
-
+                tumDrawText("[E]xit",50,20,Black);
+                xSemaphoreGive(DrawSignal);
                 taskEXIT_CRITICAL();
 
                 vTaskDelay(10);
@@ -1878,15 +2098,18 @@ int main(int argc, char *argv[])
     if (xTaskCreate(vPausedStateTask, "PausedStateTask",
                     mainGENERIC_STACK_SIZE, NULL, mainGENERIC_PRIORITY,
                     &PausedStateTask) != pdPASS) {
-        //PRINT_TASK_ERROR("PausedStateTask");
         goto err_pausedstate;
+    }
+
+    if (xTaskCreate(vGameOverStateTask, "GameOverStateTask",
+                    mainGENERIC_STACK_SIZE, NULL, mainGENERIC_PRIORITY,
+                    &GameOverStateTask) != pdPASS) {
     }
 
     if (xTaskCreate(vNoConnectionTask, "NoConnectionTask",
                     mainGENERIC_STACK_SIZE, NULL, mainGENERIC_PRIORITY,
                     &NoConnectionTask) != pdPASS) {
-        //PRINT_TASK_ERROR("PausedStateTask");
-        goto err_pausedstate;
+    
     }
 
     xTaskCreate(vUDPControlTask, "UDPControlTask",
@@ -1895,6 +2118,7 @@ int main(int argc, char *argv[])
     vTaskSuspend(UDPControlTask);
     vTaskSuspend(NoConnectionTask);
     vTaskSuspend(PausedStateTask);
+    vTaskSuspend(GameOverStateTask);
     vTaskSuspend(DemoTask);
     vTaskSuspend(MenuTask);
     vTaskStartScheduler();
