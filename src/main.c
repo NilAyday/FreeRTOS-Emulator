@@ -4,30 +4,20 @@
 #include <time.h>
 #include <inttypes.h>
 
-
-#include <SDL2/SDL_scancode.h>
-
 #include "FreeRTOS.h"
 #include "queue.h"
 #include "semphr.h"
 #include "task.h"
-#include "timers.h"
-
-
-#include "TUM_Ball.h"
 #include "TUM_Draw.h"
 #include "TUM_Event.h"
-#include "TUM_Sound.h"
 #include "TUM_Utils.h"
 #include "TUM_Font.h"
-
+#include "TUM_Sound.h"
 #include "AsyncIO.h"
-
+#include "tetris.h"
 
 #define STATE_QUEUE_LENGTH 1
-
 #define STATE_COUNT 2
-
 #define STATE_ONE 0
 #define STATE_TWO 1
 #define STATE_THREE 2
@@ -41,46 +31,61 @@
 #define mainGENERIC_STACK_SIZE ((unsigned short)2560)
 #define STATE_DEBOUNCE_DELAY 300
 
+#define KEYCODE(CHAR) SDL_SCANCODE_##CHAR
+
 #define LOGO_FILENAME "../resources/images/tetris_logo.jpg"
 
+#define GRID_X 12
+#define GRID_Y 23
+#define SHAPE_X 6
+#define SHAPE_Y 5
+#define BLOCK_TYPE 7
+#define LIST_SIZE 10
+#define STRING_WIDTH 50
+#define NUMBER_OF_MAX_SCORE 3
+#define KEY_RIGHT 79
+#define KEY_LEFT  80
+#define KEY_DOWN  81
+#define SPEED_CONST1 500
+#define SPEED_CONST2 40
+#define MAX_LEVEL 9
+#define LEVEL_UP_CONST 60
+#define QUEUE_SIZE 20
+#define QUEUE_WIDTH 20
+#define BLOCK_SIZE 20
+#define GRID_OFFSET_X 200
+#define GRID_OFFSET_Y 20
+#define TASK_DELAY 10
 
+#define FPS_AVERAGE_COUNT 50
+#define FPS_FONT "IBMPlexSans-Bold.ttf"
 
-//const unsigned char next_state_signal = NEXT_TASK;
-const unsigned char prev_state_signal = PREV_TASK;
+static image_handle_t logo_image=NULL;
 
 static TaskHandle_t StateMachine = NULL;
 static TaskHandle_t BufferSwap = NULL;
-
 static TaskHandle_t DemoTask = NULL;
 static TaskHandle_t MenuTask = NULL;
-TaskHandle_t PausedStateTask = NULL;
-TaskHandle_t GameOverStateTask = NULL;
-TaskHandle_t NoConnectionTask = NULL;
+static TaskHandle_t PausedStateTask = NULL;
+static TaskHandle_t GameOverStateTask = NULL;
+static TaskHandle_t NoConnectionTask = NULL;
 static TaskHandle_t HandleTask= NULL;
 static TaskHandle_t HandleUpdateY= NULL;
 static TaskHandle_t HandleUpdateX= NULL;
 
-QueueHandle_t BoundrysQueue =NULL;
-QueueHandle_t YQueue=NULL;
-
 static SemaphoreHandle_t syncSignal=NULL;
-
-static QueueHandle_t StateQueue = NULL;
+static QueueHandle_t     StateQueue = NULL;
 static SemaphoreHandle_t DrawSignal = NULL;
 static SemaphoreHandle_t ScreenLock = NULL;
 
-TimerHandle_t myTimer= NULL;
-
-static image_handle_t logo_image=NULL;
-
 /** AsyncIO related */
-#define UDP_BUFFER_SIZE 1024
-#define UDP_RECEIVE_PORT 1234
+#define UDP_BUFFER_SIZE   1024
+#define UDP_RECEIVE_PORT  1234
 #define UDP_TRANSMIT_PORT 1235
 
 static SemaphoreHandle_t HandleUDP=NULL;
-aIO_handle_t udp_soc_receive=NULL, udp_soc_transmit=NULL;
-TaskHandle_t UDPControlTask = NULL;
+static aIO_handle_t udp_soc_receive=NULL; 
+static TaskHandle_t UDPControlTask = NULL;
 
 static QueueHandle_t SendQueue=NULL;
 static QueueHandle_t ReceiveQueue=NULL;
@@ -98,13 +103,11 @@ struct my_Y{
     int condition_Y2;
     int condition_Y;
 };
-
 struct my_struct_Y{
-    SemaphoreHandle_t lock_Y;
+    SemaphoreHandle_t lock;
     struct my_Y my_Y_instance;
 };
-
-struct my_struct_Y my_struct_instance_Y={.lock_Y=NULL};
+struct my_struct_Y my_struct_instance_Y={.lock=NULL};
 
 struct crd{
     int y;
@@ -112,25 +115,27 @@ struct crd{
     int x;
     int px;
 };
+
 struct my_coord{
     SemaphoreHandle_t lock;
     struct crd coord_instance;
 };
+
 struct my_coord my_coord_instance={.lock=NULL};
 
 struct board{
     int level;
     int total_line;
     int score;
-    int max[3];
+    int max[NUMBER_OF_MAX_SCORE];
 };
+
 struct my_board{
     SemaphoreHandle_t lock;
     struct board board_instance;
 };
+
 struct my_board my_board_instance={.lock=NULL};
-
-
 
 struct my_struct_tetri{
     SemaphoreHandle_t lock_tetri;
@@ -141,41 +146,44 @@ struct my_struct_tetri my_struct_instance_tetri={.lock_tetri=NULL};
 
 struct my_struct_grid{
     SemaphoreHandle_t lock_grid;
-    int Grid[12][23];
+    int Grid[GRID_X][GRID_Y];
 };
 
 struct my_struct_grid my_struct_instance_grid={.lock_grid=NULL};
 
 struct my_struct_frame{
     SemaphoreHandle_t lock_frame;
-    int Frame[12][23];
+    int Frame[GRID_X][GRID_Y];
 };
 
 struct my_struct_frame my_struct_instance_frame={.lock_frame=NULL};
 
 struct my_struct_shape{
     SemaphoreHandle_t lock_shape;
-    int Shape[6][5];
+    int Shape[SHAPE_X][SHAPE_Y];
 };
 struct my_struct_shape my_struct_instance_shape={.lock_shape=NULL};
 
 struct next_shape{
     SemaphoreHandle_t lock;
-    int NextShape[6][5];
+    int NextShape[SHAPE_X][SHAPE_Y];
 };
 struct next_shape instance_next_shape={.lock=NULL};
 
 struct block{
     SemaphoreHandle_t lock;
-    int Block[7];
+    int Block[BLOCK_TYPE];
 };
 struct block instance_block={.lock=NULL};
+
+struct U_args{
+    int i;
+    char List[LIST_SIZE][STRING_WIDTH]; 
+};
 
 QueueHandle_t Que_cond_Y = NULL;
 QueueHandle_t Que_cond_X_R = NULL;
 QueueHandle_t Que_cond_X_L = NULL;
-
-
 
 typedef struct buttons_buffer {
     unsigned char buttons[SDL_NUM_SCANCODES];
@@ -192,230 +200,250 @@ void xGetButtonInput(void)
     }
 }
 
-#define KEYCODE(CHAR) SDL_SCANCODE_##CHAR
-
-
-
-int Random_Generator(int number)
+void choosetetri(char tetri)
 {
-    char Tetri;
-    time_t t;
-    srand((unsigned) time(&t));
-    xSemaphoreTake(instance_block.lock,portMAX_DELAY);
-    if(number==0)
-    {
-         for(int i=0; i<7; i++)
-        {
-            instance_block.Block[i]=i;
-        }
-
-        for(int i=0; i<7; i++)
-        {
-            int j= (i+ rand())%7;
-            int t = instance_block.Block[j];
-            instance_block.Block[j]=instance_block.Block[i];
-            instance_block.Block[i]=t;
-        }
+    if(xSemaphoreTake(instance_next_shape.lock,portMAX_DELAY)==pdTRUE)
+    {   
+        choose_tetri(SHAPE_X, SHAPE_Y, tetri, (int *) &instance_next_shape.NextShape);         
+        xSemaphoreGive(instance_next_shape.lock);
     }
-    switch(instance_block.Block[number])
-    {
-        case 0: 
-            Tetri= 'T';
-            break;
-        case 1:
-            Tetri='J';
-            break;
-        case 2:
-            Tetri='Z';
-            break;
-        case 3:
-            Tetri='O';
-            break;
-        case 4:
-            Tetri='S';
-            break;
-        case 5:
-            Tetri='L';
-            break;
-        case 6:
-            Tetri='I';
-            break;
-        default:
-            break;
-
-    }
-    xSemaphoreGive(instance_block.lock);
-
-    return Tetri;
 }
 
-void Tetrimino(int Tetrimino_number)
+int movecondition(int x, int y)
 {
-    static char send_value[50];
-    static char recv_value[50];
-    char Tetri;
-    xSemaphoreTake(instance_two_player.lock,portMAX_DELAY);
-    if((instance_two_player.flag==0)|(instance_two_player.flag==2))
-    {
-        xSemaphoreGive(instance_two_player.lock);
-        Tetri=Random_Generator(Tetrimino_number);
-    }
-    else 
-    {
-        xSemaphoreGive(instance_two_player.lock);
-        sprintf(send_value,"NEXT");
-        xQueueSend(SendQueue,(void *)&send_value,0);
-        if(xQueueReceive(ReceiveQueue,&recv_value,portMAX_DELAY)==pdTRUE)
-        {
-            Tetri=*recv_value;
-        }
-                
-    }
-     
+    int flag=0;
+    if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
+    { 
+            if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
+            {
+                flag=move_condition(SHAPE_X,SHAPE_Y, GRID_X, GRID_Y,x,y,(int *) &my_struct_instance_shape.Shape, (int *) &my_struct_instance_grid.Grid);  
+                xSemaphoreGive(my_struct_instance_grid.lock_grid);
+            } 
+            xSemaphoreGive(my_struct_instance_shape.lock_shape);
+    } 
+    return flag;         
+}
 
+void rotate_R(void)
+{
+    if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)   
+    { 
+            rotate_tetrimino_R(SHAPE_X,SHAPE_Y, (int *) &my_struct_instance_shape.Shape);    
+            xSemaphoreGive(my_struct_instance_shape.lock_shape);
+    }
+}
+
+void rotate_L(void)
+{
+    if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)   
+    { 
+            rotate_tetrimino_L(SHAPE_X,SHAPE_Y, (int *) my_struct_instance_shape.Shape);    
+            xSemaphoreGive(my_struct_instance_shape.lock_shape);
+    }
+}
+
+void movetetrimino()
+{
+    if(xSemaphoreTake(my_struct_instance_frame.lock_frame,portMAX_DELAY)==pdTRUE)
+    {     
+        if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
+        {         
+            if(xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY)==pdTRUE)
+            {       
+                move_tetrimino(SHAPE_X,SHAPE_Y,GRID_X,GRID_Y,
+                                my_coord_instance.coord_instance.x,my_coord_instance.coord_instance.y,
+                                (int *) &my_struct_instance_shape.Shape,(int *) &my_struct_instance_frame.Frame);
+                xSemaphoreGive(my_coord_instance.lock);
+            }
+            xSemaphoreGive(my_struct_instance_shape.lock_shape);
+        }
+        xSemaphoreGive(my_struct_instance_frame.lock_frame);
+    }
+}
+
+int linedisappear(void)
+{
+    int count_line;
+    if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
+    {
+        count_line=line_disappear(GRID_X, GRID_Y,(int *) &my_struct_instance_grid.Grid);
+        xSemaphoreGive(my_struct_instance_grid.lock_grid);
+    }
+    return count_line;
+}
+
+void score(int count_line)
+{
+    int factor=0;
+
+    switch(count_line)
+    {
+        case 0: 
+            factor=0;
+            break;
+        case 1:
+            factor=40;
+            break;
+        case 2:
+            factor=100;
+            break;
+        case 3:
+            factor=300;
+            break;
+        case 4:
+            factor=1200;
+            break;
+        default:
+            break;   
+    } 
+    if(xSemaphoreTake(my_board_instance.lock,portMAX_DELAY)==pdTRUE)
+    {
+        my_board_instance.board_instance.total_line=my_board_instance.board_instance.total_line+count_line;
+        my_board_instance.board_instance.score=my_board_instance.board_instance.score+factor*(my_board_instance.board_instance.level+1);
+
+        if((my_board_instance.board_instance.score/LEVEL_UP_CONST)>my_board_instance.board_instance.level)
+        {
+            my_board_instance.board_instance.level++;
+            if (my_board_instance.board_instance.level>MAX_LEVEL) my_board_instance.board_instance.level=MAX_LEVEL;
+        }
+        xSemaphoreGive(my_board_instance.lock);
+    }
+}
+
+void copy_frametogrid(void)
+{
+    if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
+    {
+        for(int i=0;i<GRID_X; i++)
+        {
+            for(int j=0; j<GRID_Y; j++)
+            {
+                if(my_struct_instance_grid.Grid[i][j]==0 && my_struct_instance_frame.Frame[i][j]!=0)
+                {
+                    my_struct_instance_grid.Grid[i][j]=my_struct_instance_frame.Frame[i][j];
+                }
+                my_struct_instance_frame.Frame[i][j]=0;
+            }
+        }
+        xSemaphoreGive(my_struct_instance_grid.lock_grid);
+    }
+}
+
+void copy_nextshapetoshape(void)
+{
     if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
     {   
         if(xSemaphoreTake(instance_next_shape.lock,portMAX_DELAY)==pdTRUE)
         { 
-            for(int i=0; i<6;i++)
+            for(int i=0; i<SHAPE_X;i++)
             {
-                for(int j=0; j<5; j++)
+                for(int j=0; j<SHAPE_Y; j++)
                 {
                     my_struct_instance_shape.Shape[i][j]=instance_next_shape.NextShape[i][j];
-                    instance_next_shape.NextShape[i][j]=0;
                 }
             }
-            switch(Tetri)
-                {
-                    case 'T' : //T
-                        instance_next_shape.NextShape[1][2]=2;
-                        instance_next_shape.NextShape[2][2]=2;
-                        instance_next_shape.NextShape[3][2]=2;
-                        instance_next_shape.NextShape[2][3]=2;
-                        break;
-                    case 'J' : //J
-                        instance_next_shape.NextShape[1][2]=3;
-                        instance_next_shape.NextShape[2][2]=3;
-                        instance_next_shape.NextShape[3][2]=3;
-                        instance_next_shape.NextShape[3][3]=3;
-                        break;
-                    case 'Z' : //Z
-                        instance_next_shape.NextShape[1][2]=4;
-                        instance_next_shape.NextShape[2][2]=4;
-                        instance_next_shape.NextShape[2][3]=4;
-                        instance_next_shape.NextShape[3][3]=4;
-                        break;
-                    case 'O' : //O
-                        instance_next_shape.NextShape[1][2]=5;
-                        instance_next_shape.NextShape[1][3]=5;
-                        instance_next_shape.NextShape[2][2]=5;
-                        instance_next_shape.NextShape[2][3]=5;
-                        break;
-                    case 'S' : //S
-                        instance_next_shape.NextShape[1][3]=6;
-                        instance_next_shape.NextShape[2][2]=6;
-                        instance_next_shape.NextShape[2][3]=6;
-                        instance_next_shape.NextShape[3][2]=6;
-                        break;
-                    case 'L' : //L
-                        instance_next_shape.NextShape[1][2]=7;
-                        instance_next_shape.NextShape[1][3]=7;
-                        instance_next_shape.NextShape[2][2]=7;
-                        instance_next_shape.NextShape[3][2]=7;
-                        break;
-                    case 'I' : //I
-                        instance_next_shape.NextShape[1][2]=8;
-                        instance_next_shape.NextShape[2][2]=8;
-                        instance_next_shape.NextShape[3][2]=8;
-                        instance_next_shape.NextShape[4][2]=8;
-                        break;
-                    
-                    default:
-                        break;
-                }
-        xSemaphoreGive(instance_next_shape.lock);
+            xSemaphoreGive(instance_next_shape.lock);
         }
-    xSemaphoreGive(my_struct_instance_shape.lock_shape);
-
+        xSemaphoreGive(my_struct_instance_shape.lock_shape);
     }
-
 }
 
-void Grid()
+void reset_grid()
 {
-    if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
-    {
-           for(int i=0; i<23;i++) 
-           {
-               my_struct_instance_grid.Grid[0][i]=1;
-               my_struct_instance_grid.Grid[11][i]=1;
-           }
-           for(int i=0; i<12; i++)
-           {
-               my_struct_instance_grid.Grid[i][22]=1;
-           }
-           
-    xSemaphoreGive(my_struct_instance_grid.lock_grid);
-    }
-
-    if(xSemaphoreTake(instance_next_shape.lock,portMAX_DELAY)==pdTRUE)
-    { 
-        instance_next_shape.NextShape[1][2]=1;
-        instance_next_shape.NextShape[3][2]=1;
-        instance_next_shape.NextShape[2][2]=1;
-        instance_next_shape.NextShape[4][2]=1;
-    xSemaphoreGive(instance_next_shape.lock);  
-    }
-    
-    
-}
-void reset()
-{
-    xSemaphoreTake(my_board_instance.lock,portMAX_DELAY);
-    my_board_instance.board_instance.total_line=0;
-    my_board_instance.board_instance.score=0;
-    xSemaphoreGive(my_board_instance.lock);
-
-    xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY);
-    my_coord_instance.coord_instance.x=5;
-    my_coord_instance.coord_instance.py=0;
-    my_coord_instance.coord_instance.x=5;
-    my_coord_instance.coord_instance.y=0;
-    xSemaphoreGive(my_coord_instance.lock);
-
     if(xSemaphoreTake(my_struct_instance_frame.lock_frame,portMAX_DELAY)==pdTRUE)
     {
         if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
         {   
-            for(int i=0; i<12; i++)
+            for(int i=0; i<GRID_X; i++)
             {   
-                for(int j=0; j<23; j++)
+                for(int j=0; j<GRID_Y; j++)
                 {
                     my_struct_instance_frame.Frame[i][j]= 0;
                     my_struct_instance_grid.Grid[i][j]= 0;
+                    my_struct_instance_grid.Grid[0][j]=1;
+                    my_struct_instance_grid.Grid[GRID_X-1][j]=1;
                 }
+                my_struct_instance_grid.Grid[i][GRID_Y-1]=1;
             }
-        xSemaphoreGive(my_struct_instance_grid.lock_grid);
-        }
-          
-            
-    xSemaphoreGive(my_struct_instance_frame.lock_frame);
+            xSemaphoreGive(my_struct_instance_grid.lock_grid);
+        }              
+        xSemaphoreGive(my_struct_instance_frame.lock_frame);
     }
-    Grid(); 
-    
+}
+
+void reset_shape(void)
+{
     if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
     { 
-        for(int i=0; i<6;i++)
+        for(int i=0; i<SHAPE_X;i++)
         {
-            for(int j=0; j<5;j++)
+            for(int j=0; j<SHAPE_Y;j++)
             {
                 my_struct_instance_shape.Shape[i][j]=0;
-                instance_next_shape.NextShape[i][j]=0;   
             }
         }  
-
-    xSemaphoreGive(my_struct_instance_shape.lock_shape);
+        xSemaphoreGive(my_struct_instance_shape.lock_shape);
     } 
+}
+
+int Tetrimino(int Tetrimino_number)
+{
+    static char send_value[STRING_WIDTH];
+    static char recv_value[STRING_WIDTH];
+    char Tetri;
+    int cok=0;                      // 1 communication ok, 0 no communication
+
+    if(xSemaphoreTake(instance_two_player.lock,portMAX_DELAY)==pdTRUE)
+    {
+        if(instance_two_player.flag==0)
+        {
+            if(xSemaphoreTake(instance_block.lock,portMAX_DELAY)==pdTRUE)
+            {
+                Tetri=RGenerator(Tetrimino_number, BLOCK_TYPE, instance_block.Block);
+                xSemaphoreGive(instance_block.lock);
+            }
+        }
+        else 
+        {
+            sprintf(send_value,"NEXT");
+            xQueueSend(SendQueue,(void *)&send_value,0);
+            if(xQueueReceive(ReceiveQueue,(int *) &recv_value,500)==pdTRUE)
+            {
+                Tetri=*recv_value;
+            }
+            else
+            {
+                cok=1;
+                Tetri='O';
+            }             
+        }
+        xSemaphoreGive(instance_two_player.lock);
+    }
+    copy_nextshapetoshape();
+    choosetetri(Tetri);
+    return cok;
+}
+
+void reset()
+{
+    if(xSemaphoreTake(my_board_instance.lock,portMAX_DELAY)==pdTRUE)
+    {
+        my_board_instance.board_instance.total_line=0;
+        my_board_instance.board_instance.score=0;
+        xSemaphoreGive(my_board_instance.lock);
+    }
+
+    if(xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY)==pdTRUE)
+    {
+        my_coord_instance.coord_instance.px=GRID_X/2-1;
+        my_coord_instance.coord_instance.py=0;
+        my_coord_instance.coord_instance.x=GRID_X/2-1;
+        my_coord_instance.coord_instance.y=0;
+        xSemaphoreGive(my_coord_instance.lock);
+    }
+
+    reset_grid();
+    reset_shape();
 
     Tetrimino(0);
     Tetrimino(1);
@@ -444,6 +472,7 @@ void changeState(volatile unsigned char *state, unsigned char forwards)
             break;
     }
 }
+
 void basicSequentialStateMachine(void *pvParameters)
 {
     unsigned char state_changed = 1; // Only re-evaluate state if it has changed
@@ -476,7 +505,6 @@ initial_state:
         if (state_changed) {
             switch (input) {
                 case STATE_ONE:
-                    printf("state ONE\n");
                     if (DemoTask)         vTaskSuspend(DemoTask);
                     if (HandleTask)       vTaskSuspend(HandleTask);
                     if (HandleUpdateX)    vTaskSuspend(HandleUpdateX);
@@ -490,7 +518,7 @@ initial_state:
                     xSemaphoreGive(instance_two_player.lock); 
                     break;
                 case 'O':
-                    printf("state O\n");
+                    reset();
                     if (MenuTask)         vTaskSuspend(MenuTask);
                     if (DemoTask)         vTaskResume(DemoTask);
                     if (HandleTask)       vTaskResume(HandleTask);
@@ -498,12 +526,13 @@ initial_state:
                     if (HandleUpdateY)    vTaskResume(HandleUpdateY);
                     break;
                 case 'T':
-                    printf("state T\n");
                     if (MenuTask)         vTaskSuspend(MenuTask);
                     if (UDPControlTask)   vTaskResume(UDPControlTask);
                     break;
                 case 'E':
-                    printf("state E\n");
+                    xSemaphoreTake(instance_two_player.lock,0);
+                    instance_two_player.flag=0;
+                    xSemaphoreGive(instance_two_player.lock);
                     if (DemoTask)         vTaskSuspend(DemoTask);
                     if (HandleTask)       vTaskSuspend(HandleTask);
                     if (HandleUpdateX)    vTaskSuspend(HandleUpdateX);
@@ -512,17 +541,12 @@ initial_state:
                     if (UDPControlTask)   vTaskSuspend(UDPControlTask);
                     if (GameOverStateTask) vTaskSuspend(GameOverStateTask);
                     if (MenuTask)         vTaskResume(MenuTask);
-                    xSemaphoreTake(instance_two_player.lock,0);
-                    instance_two_player.flag=0;
-                    xSemaphoreGive(instance_two_player.lock);
-                    reset();
+                    //reset();
                     break;
                 case 'R':
-                    printf("State R\n");
                     reset();
                     break;
                 case 'P':
-                    printf("state P\n");
                     if(flag_pause==0)
                     {
                         if (DemoTask)         vTaskSuspend(DemoTask);
@@ -543,12 +567,15 @@ initial_state:
                     } 
                     break;
                 case 'C':
-                    printf("state C\n");
-                    if(UDPControlTask)   vTaskSuspend(UDPControlTask);
-                    if(NoConnectionTask) vTaskResume(NoConnectionTask);
+                    if (UDPControlTask)   vTaskSuspend(UDPControlTask);
+                    if (DemoTask)         vTaskSuspend(DemoTask);
+                    if (HandleTask)       vTaskSuspend(HandleTask);
+                    if (HandleUpdateX)    vTaskSuspend(HandleUpdateX);
+                    if (HandleUpdateY)    vTaskSuspend(HandleUpdateY);
+                    if (NoConnectionTask) vTaskResume(NoConnectionTask);
                     break;
                 case 'S':
-                    printf("state S\n");
+                    reset();
                     if (NoConnectionTask) vTaskSuspend(NoConnectionTask);
                     if (DemoTask)         vTaskResume(DemoTask);
                     if (HandleTask)       vTaskResume(HandleTask);
@@ -560,7 +587,6 @@ initial_state:
                     xSemaphoreGive(instance_two_player.lock);
                     break;
                 case 'G':
-                    printf("state G\n");
                     if (DemoTask)         vTaskSuspend(DemoTask);
                     if (HandleTask)       vTaskSuspend(HandleTask);
                     if (HandleUpdateX)    vTaskSuspend(HandleUpdateX);
@@ -574,6 +600,7 @@ initial_state:
         }
     }
 }
+
 void vSwapBuffers(void *pvParameters)
 {
     TickType_t xLastWakeTime;
@@ -582,7 +609,8 @@ void vSwapBuffers(void *pvParameters)
 
     tumDrawBindThread(); // Setup Rendering handle with correct GL context
 
-    while (1) {
+    while (1) 
+    {
         if (xSemaphoreTake(ScreenLock, portMAX_DELAY) == pdTRUE) {
             tumDrawUpdateScreen();
             tumEventFetchEvents(FETCH_EVENT_BLOCK);
@@ -593,6 +621,7 @@ void vSwapBuffers(void *pvParameters)
         }
     }
 }
+
 static int vCheckStateInputMenu(void)
 {
     unsigned char next_state_signal;
@@ -600,7 +629,6 @@ static int vCheckStateInputMenu(void)
         if (buttons.buttons[KEYCODE(O)]) {
             buttons.buttons[KEYCODE(O)] = 0;
             if (StateQueue) {
-                printf("O ya badildi\n");
                 xSemaphoreGive(buttons.lock);
                 next_state_signal='O';
                 xQueueSend(StateQueue, &next_state_signal, 0);
@@ -620,13 +648,11 @@ static int vCheckStateInputMenu(void)
         }
         xSemaphoreGive(buttons.lock);
     }
-    
-
     return 0;
 }
+
 static int vCheckStateInputTask(void)
 {
-
     unsigned char next_state_signal;
     if (xSemaphoreTake(buttons.lock, 0) == pdTRUE) {
         if (buttons.buttons[KEYCODE(E)]) {
@@ -661,9 +687,6 @@ static int vCheckStateInputTask(void)
         }
         xSemaphoreGive(buttons.lock);
     }
-    
-    
-
     return 0;
 }
 
@@ -672,291 +695,30 @@ static int vCheckConnectionTask(void)
 
     unsigned char next_state_signal;
     
-    xSemaphoreTake(instance_two_player.lock,portMAX_DELAY);
-            if(instance_two_player.flag==3)
-            {
-               if (StateQueue) {
-                xSemaphoreGive(instance_two_player.lock);
-                next_state_signal='S';
-                xQueueSend(StateQueue, &next_state_signal, 0);
-                return 0;
-                }
+    if(xSemaphoreTake(instance_two_player.lock,portMAX_DELAY)==pdTRUE)
+    {
+        if(instance_two_player.flag==3)
+        {
+            if (StateQueue) {
+            xSemaphoreGive(instance_two_player.lock);
+            next_state_signal='S';
+            xQueueSend(StateQueue, &next_state_signal, 0);
+            return 0;
             }
-            if(instance_two_player.flag==2)
-            {
-               if (StateQueue) {
-                xSemaphoreGive(instance_two_player.lock);
-                next_state_signal='C';
-                xQueueSend(StateQueue, &next_state_signal, 0);
-                return 0;
-                }
+        }
+        if(instance_two_player.flag==2)
+        {
+            if (StateQueue) {
+            xSemaphoreGive(instance_two_player.lock);
+            next_state_signal='C';
+            xQueueSend(StateQueue, &next_state_signal, 0);
+            return 0;
             }
-    xSemaphoreGive(instance_two_player.lock);
-
+        }
+        xSemaphoreGive(instance_two_player.lock);
+    }
     return 0;
 }
-
-
-
-void move_tetrimino()
-{
-
-    int xmin=6;
-    int xmax=0;
-    int ymax=0;
-    
-
-   if(xSemaphoreTake(my_struct_instance_frame.lock_frame,portMAX_DELAY)==pdTRUE)
-    {
-          
-        if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
-        {  
-                    
-                    for(int i=0; i<6;i++)
-                    {
-                        for(int j=0; j<5;j++)
-                        {
-                            if (my_struct_instance_shape.Shape[i][j]!=0)
-                            {
-                                 if(ymax<j+1)
-                                    ymax=j+1;
-                            }
-                        }
-                    }  
-                    for(int j=0; j<5;j++)
-                    {
-                        for(int i=0; i<6;i++)
-                        {
-                            if (my_struct_instance_shape.Shape[i][j]!=0)
-                            {
-                                if (xmin>i)
-                                    xmin=i;
-                                if(i+1>xmax)
-                                    xmax=i+1;
-                            }
-                        }
-                    }  
-                    
-                   
-
-                    for(int i=0; i<12; i++)
-                    {   
-                        for(int j=0; j<23; j++)
-                        {
-                            my_struct_instance_frame.Frame[i][j]= 0;
-                        }
-                    }
-                   
-                    xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY);
-                    for(int i=xmin; i<xmax; i++)
-                    {
-                        for(int j=0; j<ymax; j++)
-                        {
-                            my_struct_instance_frame.Frame[my_coord_instance.coord_instance.x+i][my_coord_instance.coord_instance.y+j]= my_struct_instance_shape.Shape[i][j];
-                        }
-                    }    
-                    xSemaphoreGive(my_coord_instance.lock);
-
-        xSemaphoreGive(my_struct_instance_shape.lock_shape);            
-        }   
-    xSemaphoreGive(my_struct_instance_frame.lock_frame);
-    } 
-}
-
-
-
-
-void rotate_tetrimino_L()
-{
-
-    int tmp[5][5];
-    xSemaphoreTake(my_struct_instance_tetri.lock_tetri,portMAX_DELAY);
-
-    if(1)
-    {
-        if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
-        {
-            if(my_struct_instance_shape.Shape[1][2]!=5)
-            {
-                for(int i=0; i<5; i++)
-                {
-                    for(int j=0; j<5; j++)
-                    {
-                        
-                        tmp[i][j]=my_struct_instance_shape.Shape[i][j];
-                    
-                    }
-                }
-                for(int x=0; x<5; x++)
-                {
-                    for(int y=x; y<5-x-1;y++)
-                    {
-                    
-                        int temp=tmp[x][y];
-                        tmp[x][y]=tmp[y][5-1-x];
-                        tmp[y][5-1-x]=tmp[5-1-x][5-1-y];
-                        tmp[5-1-x][5-1-y]=tmp[5-1-y][x];
-                        tmp[5-1-y][x]=temp;
-                    
-                    }
-                }
-                for(int i=0; i<6; i++)
-                {
-                    for(int j=0; j<5; j++)
-                    {
-                        my_struct_instance_shape.Shape[i][j]=0;
-                    }
-                }
-                for(int i=0; i<5; i++)
-                {
-                    for(int j=0; j<5; j++)
-                    {
-                        my_struct_instance_shape.Shape[i][j]=tmp[i][j];
-                    }
-                }
-            }
-        xSemaphoreGive(my_struct_instance_shape.lock_shape);
-        }
-
-        
-    }
-    xSemaphoreGive(my_struct_instance_tetri.lock_tetri);
-
-}
-
-void rotate_tetrimino_R()
-{
-
-
-    int tmp[5][5];
-    xSemaphoreTake(my_struct_instance_tetri.lock_tetri,portMAX_DELAY);
-   
-    if(1)
-    {
-        if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
-        {
-            if(my_struct_instance_shape.Shape[1][2]!=5)
-            {
-                for(int i=0; i<5; i++)
-                {
-                    for(int j=0; j<5; j++)
-                    {
-                        tmp[i][j]=my_struct_instance_shape.Shape[i][j];
-                    }
-                        
-                }
-                for(int i=0; i<5/2; i++)
-                {
-                    for(int j=i; j<5-i-1;j++)
-                    {
-                    
-                        int temp=tmp[i][j];
-                        tmp[i][j]=tmp[5-1-j][i];
-                        tmp[5-1-j][i]=tmp[5-1-i][5-1-j];
-                        tmp[5-1-i][5-1-j]=tmp[j][5-1-i];
-                        tmp[j][5-1-i]=temp;
-                    }
-                }
-                for(int i=0; i<6; i++)
-                {
-                    for(int j=0; j<5; j++)
-                    {
-                        my_struct_instance_shape.Shape[i][j]=0;
-                    }
-                }
-                for(int i=0; i<5; i++)
-                {
-                    for(int j=0; j<5; j++)
-                    {
-                        my_struct_instance_shape.Shape[i][j]=tmp[i][j];
-                    }
-                }
-            }
-        xSemaphoreGive(my_struct_instance_shape.lock_shape);
-        }
-
-        
-    }
-    xSemaphoreGive(my_struct_instance_tetri.lock_tetri);
-
-}
-
-int move_condition(int x, int y)
-{
-    int xmin=6;
-    int xmax=0;
-    int ymax=0;
-    int CFrame[12][23];
-    int CFlag;
-
-    CFlag=0;                                
-
-        if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
-        {   
-                if(xSemaphoreTake(my_struct_instance_shape.lock_shape,portMAX_DELAY)==pdTRUE)
-                {  
-                   
-                    for(int i=0; i<6;i++)
-                    {
-                        for(int j=0; j<5;j++)
-                        {
-                            if (my_struct_instance_shape.Shape[i][j]!=0)
-                            {
-                                 if(ymax<j+1)
-                                    ymax=j+1;
-                            }
-                        }
-                    }  
-                    for(int j=0; j<5;j++)
-                    {
-                        for(int i=0; i<6;i++)
-                        {
-                            if (my_struct_instance_shape.Shape[i][j]!=0)
-                            {
-                                if (xmin>i)
-                                    xmin=i;
-                                if(i+1>xmax)
-                                    xmax=i+1;
-                            }
-                        }
-                    }  
-                    
-                    
-                    for(int i=0; i<12; i++)
-                    {   
-                        for(int j=0; j<23; j++)
-                        {
-                            CFrame[i][j]= 0;
-                        }
-                    }
-                   
-                    for(int i=xmin; i<xmax; i++)
-                    {
-                        for(int j=0; j<ymax; j++)
-                        {
-                            CFrame[x+i][y+j]= my_struct_instance_shape.Shape[i][j];
-                        }
-                    }    
-                    
-                    for(int i=0; i<12; i++)
-                    {   
-                        for(int j=0; j<23; j++)
-                        {
-                            if((CFrame[i][j]!=0) & (my_struct_instance_grid.Grid[i][j]!=0))
-                            {
-                                CFlag=1;
-                            }
-                        }
-                    }
-
-                }
-                xSemaphoreGive(my_struct_instance_shape.lock_shape); 
-        }
-        xSemaphoreGive(my_struct_instance_grid.lock_grid);  
-    return CFlag;
-}
-
-
 
 void UpdateY()
 {
@@ -972,62 +734,62 @@ void UpdateY()
         cx=my_coord_instance.coord_instance.x;
         cy=my_coord_instance.coord_instance.y; 
         xSemaphoreGive(my_coord_instance.lock);
-
-        if(move_condition(cx,cy+1)==0)
+       
+        if(movecondition(cx,cy+1)==0)
         {
-                if(xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY)==pdTRUE)
-                {  
-                     my_coord_instance.coord_instance.y++;
-                     my_struct_instance_Y.my_Y_instance.condition_Y2=0;
-                     xSemaphoreGive(my_coord_instance.lock);
-                }
+            if(xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY)==pdTRUE)
+            {  
+                my_coord_instance.coord_instance.y++;
+                xSemaphoreGive(my_coord_instance.lock);
+            }
+            if(xSemaphoreTake(my_struct_instance_Y.lock,portMAX_DELAY)==pdTRUE)
+            {
+                my_struct_instance_Y.my_Y_instance.condition_Y2=0;  
+                xSemaphoreGive(my_struct_instance_Y.lock);
+            }        
         }
         else
         {
-             if(xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY)==pdTRUE)
-                {  
-                     my_struct_instance_Y.my_Y_instance.condition_Y2++;
-                     xSemaphoreGive(my_coord_instance.lock);
-                }
+            if(xSemaphoreTake(my_struct_instance_Y.lock,portMAX_DELAY)==pdTRUE)
+            {
+                my_struct_instance_Y.my_Y_instance.condition_Y2++;  
+                xSemaphoreGive(my_struct_instance_Y.lock);
+            }
         }
         
-        xSemaphoreTake(my_board_instance.lock,portMAX_DELAY);
-        if(level!=my_board_instance.board_instance.level)
+        if(xSemaphoreTake(my_board_instance.lock,portMAX_DELAY)==pdTRUE)
         {
-            level=my_board_instance.board_instance.level;
-            Flag_D=1;
+            if(level!=my_board_instance.board_instance.level)
+            {
+                level=my_board_instance.board_instance.level;
+                Flag_D=1;
+            }
+            xSemaphoreGive(my_board_instance.lock);
         }
-        xSemaphoreGive(my_board_instance.lock);
 
         if (xSemaphoreTake(buttons.lock, 0) == pdTRUE) {
             xGetButtonInput();
             xSemaphoreGive(buttons.lock);
-
-    
-            if (buttons.buttons[81]) { 
-                    if(Flag_D==0)
-                    {
-                        Flag_D=1;
-                        delay=(500-level*40)/2; 
-                    }
-                    
-            }else 
+            if (buttons.buttons[KEY_DOWN]) 
+            { 
+                if(Flag_D==0)
+                {
+                    Flag_D=1;
+                    delay=(SPEED_CONST1-SPEED_CONST2*level)/2; 
+                }       
+            }
+            else 
             {
                 if(Flag_D==1)
                 {
                     Flag_D=0;
-                    delay=500-level*40;
+                    delay=SPEED_CONST1-SPEED_CONST2*level;
                 }
             } 
-            
-         
-        }
-        printf("Delay: %d \n",delay);
+        }  
         vTaskDelay(pdMS_TO_TICKS(delay));
     }
 }
-
-
 
 void UpdateX()
 {
@@ -1035,224 +797,128 @@ void UpdateX()
     int Flag_B=0;
     int cx,cy;
 
-    
     while(1)
     {
         if(xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY)==pdTRUE)
         {
-                my_coord_instance.coord_instance.px=my_coord_instance.coord_instance.x;
-                cx=my_coord_instance.coord_instance.x;
-                cy=my_coord_instance.coord_instance.y;  
-                xSemaphoreGive(my_coord_instance.lock);
-        }  
-                  
+            my_coord_instance.coord_instance.px=my_coord_instance.coord_instance.x;
+            cx=my_coord_instance.coord_instance.x;
+            cy=my_coord_instance.coord_instance.y;  
+            xSemaphoreGive(my_coord_instance.lock);
+        }          
         if (xSemaphoreTake(buttons.lock, 0) == pdTRUE)
         {
             xGetButtonInput();
             xSemaphoreGive(buttons.lock);
-            if (buttons.buttons[79]) 
+            if (buttons.buttons[KEY_RIGHT]) 
             { 
-                if(move_condition(cx+1,cy)==0)
+                if(movecondition(cx+1,cy)==0)
                 {
-                        if(xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY)==pdTRUE)
-                        {  
-                            my_coord_instance.coord_instance.x++;
-                            xSemaphoreGive(my_coord_instance.lock);
-                        }
-                }
-            }
-            if (buttons.buttons[80]) 
-            { 
-                if(move_condition(cx-1,cy)==0)
-                {
-                        if(xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY)==pdTRUE)
-                        {  
-                            my_coord_instance.coord_instance.x--;
-                            xSemaphoreGive(my_coord_instance.lock);
-                        }
-                }
-            } 
-            if ((buttons.buttons[4]) & (Flag_A==0))
-            { 
-                Flag_A=1;
-                rotate_tetrimino_R();    
-                if(move_condition(cx,cy)==1)
-                {
-                    rotate_tetrimino_L();
-                }
-            }else Flag_A=0;
-
-            if ((buttons.buttons[5]) & (Flag_B==0))
-            { 
-                Flag_B=1;
-                rotate_tetrimino_L();    
-                if(move_condition(cx,cy)==1)
-                {
-                    rotate_tetrimino_R();
-                }
-            }else Flag_B=0;
-        }
-                
-                 
-       vTaskDelay(100);
-    }
-}
-
-void puf(void)
-{
-    int flag;
-    int count_line=0;
-    int factor=0;
-
-    xSemaphoreTake(my_board_instance.lock,portMAX_DELAY);
-    if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
-    {
-        for(int j=21;j>1;j--)
-        {
-            flag=1;
-            for(int i=0; i<12; i++)
-            {
-                if(my_struct_instance_grid.Grid[i][j]==0)
-                    flag=0;
-                
-            }
-            if(flag==1)
-            {
-                for(int i=1; i<11; i++)
-                {
-                    my_struct_instance_grid.Grid[i][j]=my_struct_instance_grid.Grid[i][j-1];
-
-                }
-                for(int k=j;k>1;k--)
-                {
-                     for(int i=1; i<11; i++)
-                    {
-                        my_struct_instance_grid.Grid[i][k]=my_struct_instance_grid.Grid[i][k-1];
+                    if(xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY)==pdTRUE)
+                    {  
+                        my_coord_instance.coord_instance.x++;
+                        xSemaphoreGive(my_coord_instance.lock);
                     }
                 }
-                count_line++;
-                my_board_instance.board_instance.total_line++;
-                j++;
             }
-        }
-         
-    xSemaphoreGive(my_struct_instance_grid.lock_grid);
+            if (buttons.buttons[KEY_LEFT]) 
+            { 
+                if(movecondition(cx-1,cy)==0)
+                {
+                    if(xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY)==pdTRUE)
+                    {  
+                        my_coord_instance.coord_instance.x--;
+                        xSemaphoreGive(my_coord_instance.lock);
+                    }
+                }
+            } 
+            
+            if ((buttons.buttons[KEYCODE(A)]) & (Flag_A==0))
+            { 
+                Flag_A=1;
+                rotate_R();
+                if(movecondition(cx,cy)==1)
+                {
+                    rotate_L();
+                }              
+            } 
+            else Flag_A=0;
+            
+            if ((buttons.buttons[KEYCODE(B)]) & (Flag_B==0))
+            { 
+                Flag_B=1;
+                rotate_L();
+                if(movecondition(cx,cy)==1)
+                {
+                    rotate_R(); 
+                }            
+            }
+            else Flag_B=0;
+        }  
+        vTaskDelay(pdMS_TO_TICKS(10*TASK_DELAY));
     }
-    switch(count_line){
-        case 0: 
-            factor=0;
-            break;
-        case 1:
-            factor=40;
-            break;
-        case 2:
-            factor=100;
-            break;
-        case 3:
-            factor=300;
-            break;
-        case 4:
-            factor=1200;
-            break;
-        default:
-            break;
-        
-    }
-    
-
-    my_board_instance.board_instance.score=my_board_instance.board_instance.score+factor*(my_board_instance.board_instance.level+1);
-
-    if((my_board_instance.board_instance.score/60)>my_board_instance.board_instance.level)
-    {
-        my_board_instance.board_instance.level++;
-        if (my_board_instance.board_instance.level>9) my_board_instance.board_instance.level=9;
-    }
-    
-        //my_board_instance.board_instance.level=my_board_instance.board_instance.level+my_board_instance.board_instance.score/100;
-    xSemaphoreGive(my_board_instance.lock);
 }
 
 void Task(void *pvParameters)
 {
     unsigned char next_state_signal;
     int Tetrimino_number=1;
+    int count_line;
     int flag=0;
+    int cok=0;                      // 1 communication ok, 0 no communication
 
-    BoundrysQueue=xQueueCreate(3,sizeof(int));
-
-    
-    reset();
-    
     while(1)
     {
+        cok=0;
         if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
         {
-            if ((my_struct_instance_grid.Grid[8][3]==0) & (my_struct_instance_grid.Grid[6][3]==0) & (my_struct_instance_grid.Grid[7][3]==0) &
-                (my_struct_instance_grid.Grid[8][4]==0) & (my_struct_instance_grid.Grid[6][4]==0) & (my_struct_instance_grid.Grid[7][4]==0))
+            if ((my_struct_instance_grid.Grid[GRID_X/2][3]==0) && (my_struct_instance_grid.Grid[GRID_X/2+1][3]==0) && (my_struct_instance_grid.Grid[GRID_X/2+2][3]==0) &&
+                (my_struct_instance_grid.Grid[GRID_X/2][4]==0) && (my_struct_instance_grid.Grid[GRID_X/2+1][4]==0) && (my_struct_instance_grid.Grid[GRID_X/2+2][4]==0))
             {
-                flag=0;
+                flag=0;   
             }
             else
             {
                 flag=1;
-            }
-                            
+            }              
             xSemaphoreGive(my_struct_instance_grid.lock_grid);
-        }    
-        if(flag==0)
-            move_tetrimino();
-        
+        }  
 
+        if (flag==0)
+        {
+            movetetrimino();
+        }
 
-            if(xSemaphoreTake(my_struct_instance_frame.lock_frame,portMAX_DELAY)==pdTRUE)
-            {
-                
-                if(xSemaphoreTake(my_struct_instance_Y.lock_Y,portMAX_DELAY)==pdTRUE)
-                {
-                    
+        if(xSemaphoreTake(my_struct_instance_frame.lock_frame,portMAX_DELAY)==pdTRUE)
+        { 
+                if(xSemaphoreTake(my_struct_instance_Y.lock,portMAX_DELAY)==pdTRUE)
+                {       
                     if(my_struct_instance_Y.my_Y_instance.condition_Y2>=2)
                     {
-                        my_struct_instance_Y.my_Y_instance.condition_Y2=0;
-                       
-                        
-                        if((move_condition(5,0)==0) & (flag==0))
+                        my_struct_instance_Y.my_Y_instance.condition_Y2=0;      
+
+                        if ( (movecondition((GRID_X/2-1),0)==0) && (flag==0))
                         {
-                            Tetrimino_number=(Tetrimino_number+1)%7;    
-                            Tetrimino(Tetrimino_number);
+                            Tetrimino_number=(Tetrimino_number+1)%BLOCK_TYPE;    
+                            cok=Tetrimino(Tetrimino_number);
                             
-                            xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY);
-                            my_coord_instance.coord_instance.x=5;
-                            my_coord_instance.coord_instance.py=0;
-                            my_coord_instance.coord_instance.x=5;
-                            my_coord_instance.coord_instance.y=0;
-                            xSemaphoreGive(my_coord_instance.lock);
-                            if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
+                            if(xSemaphoreTake(my_coord_instance.lock,portMAX_DELAY)==pdTRUE)
                             {
-                                for(int i=0;i<12; i++)
-                                {
-                                    for(int j=0; j<23; j++)
-                                    {
-                                        if(my_struct_instance_grid.Grid[i][j]==0 && my_struct_instance_frame.Frame[i][j]!=0)
-                                        {
-                                            my_struct_instance_grid.Grid[i][j]=my_struct_instance_frame.Frame[i][j];
-                                        }
-                                        my_struct_instance_frame.Frame[i][j]=0;
-                                
-                                    }
-                                }
-                            
-                            xSemaphoreGive(my_struct_instance_grid.lock_grid);
-                            }
+                                my_coord_instance.coord_instance.px=GRID_X/2-1;
+                                my_coord_instance.coord_instance.py=0;
+                                my_coord_instance.coord_instance.x=GRID_X/2-1;
+                                my_coord_instance.coord_instance.y=0;
+                                xSemaphoreGive(my_coord_instance.lock);
+                            }   
+                            copy_frametogrid();
                         }
-                        puf();
-                       
+                        count_line=linedisappear();
+                        score(count_line);
                     } 
-                xSemaphoreGive(my_struct_instance_Y.lock_Y);   
+                    xSemaphoreGive(my_struct_instance_Y.lock);   
                 }   
-                
-            xSemaphoreGive(my_struct_instance_frame.lock_frame);
-          
-            }
+                xSemaphoreGive(my_struct_instance_frame.lock_frame);
+         }
         if(flag==1)
         {
              next_state_signal='G';
@@ -1261,26 +927,34 @@ void Task(void *pvParameters)
                         &next_state_signal,
                         portMAX_DELAY);
         }
-        vTaskDelay(25);
-       
+        if (cok==1)
+        {
+            next_state_signal='C';
+                    xQueueSendToFront(
+                        StateQueue,
+                        &next_state_signal,
+                        portMAX_DELAY);
+        }
+        vTaskDelay(pdMS_TO_TICKS(2*TASK_DELAY));      
     }
 }
 
-static const char *gameover_text = "GAME OVER";
-static int gameover_text_width;
-static int gameover_text_height;
-
 void vGameOverStateTask(void *pvParameters)
 {
-    tumGetTextSize((char *)gameover_text, &gameover_text_width, &gameover_text_height);
     unsigned char next_state_signal;
-    char str[16];
+    char str[STRING_WIDTH];
     int flag=0;
+    
+    static const char *gameover_text = "GAME OVER";
+    static int gameover_text_width;
+    static int gameover_text_height;
 
+    tumGetTextSize((char *)gameover_text, &gameover_text_width, &gameover_text_height);
+  
     while (1) {
         if (DrawSignal) {
-            if (xSemaphoreTake(DrawSignal, portMAX_DELAY) ==
-                pdTRUE) {
+            if (xSemaphoreTake(DrawSignal, portMAX_DELAY)==pdTRUE) 
+            {
                 xGetButtonInput(); // Update global button data
 
                 if (xSemaphoreTake(buttons.lock, 0) == pdTRUE) {
@@ -1295,9 +969,6 @@ void vGameOverStateTask(void *pvParameters)
                     }
                     xSemaphoreGive(buttons.lock);
                 }
-          
-                
-
                 if (xSemaphoreTake(ScreenLock, 0) == pdTRUE) {
                     
                     tumDrawClear(Silver);
@@ -1307,87 +978,41 @@ void vGameOverStateTask(void *pvParameters)
                                 2,
                                 SCREEN_HEIGHT/4, Red);
                 }
-
-                 xSemaphoreTake(my_board_instance.lock,portMAX_DELAY);
-                if(flag==0)
+                
+                if(xSemaphoreTake(my_board_instance.lock,portMAX_DELAY)==pdTRUE)
                 {
-                    if( my_board_instance.board_instance.score > my_board_instance.board_instance.max[2])
+                    if(flag==0)
                     {
-                        if( my_board_instance.board_instance.score > my_board_instance.board_instance.max[1])
-                        {
-                            if( my_board_instance.board_instance.score > my_board_instance.board_instance.max[0])
-                            {
-                                my_board_instance.board_instance.max[2]=my_board_instance.board_instance.max[1];
-                                my_board_instance.board_instance.max[1]=my_board_instance.board_instance.max[0];
-                                my_board_instance.board_instance.max[0]=my_board_instance.board_instance.score;
-                            }
-                            else
-                            {
-                                my_board_instance.board_instance.max[2]=my_board_instance.board_instance.max[1];
-                                my_board_instance.board_instance.max[1]=my_board_instance.board_instance.score;
-                            }
-                            
-                        }
-                        else
-                        {
-                            my_board_instance.board_instance.max[2]=my_board_instance.board_instance.score;
-                        }
-                        
+                        max_scores(my_board_instance.board_instance.score,(int *) &my_board_instance.board_instance.max);
+                        flag=1;
                     }
-                    
-                    flag=1;
+                    xSemaphoreGive(my_board_instance.lock);
                 }
                
                 tumDrawText("[E]xit",50,20,Black);
-                
                 tumDrawText("High Scores", SCREEN_WIDTH/2-gameover_text_width /2,SCREEN_HEIGHT/2, White);
-                sprintf(str,"%d",my_board_instance.board_instance.max[0] );
-                tumDrawText(str, SCREEN_WIDTH/2-gameover_text_width /2,SCREEN_HEIGHT/2+gameover_text_height, White);
-                sprintf(str,"%d",my_board_instance.board_instance.max[1] );
-                tumDrawText(str, SCREEN_WIDTH/2-gameover_text_width /2,SCREEN_HEIGHT/2+2*gameover_text_height, White);
-                sprintf(str,"%d",my_board_instance.board_instance.max[2] );
-                tumDrawText(str, SCREEN_WIDTH/2-gameover_text_width /2,SCREEN_HEIGHT/2+3*gameover_text_height, White);
-
-                xSemaphoreGive(my_board_instance.lock);
-
+                if(xSemaphoreTake(my_board_instance.lock,portMAX_DELAY)==pdTRUE)
+                {    
+                    sprintf(str,"%d",my_board_instance.board_instance.max[0] );
+                    tumDrawText(str, SCREEN_WIDTH/2-gameover_text_width /2,SCREEN_HEIGHT/2+gameover_text_height, White);
+                    sprintf(str,"%d",my_board_instance.board_instance.max[1] );
+                    tumDrawText(str, SCREEN_WIDTH/2-gameover_text_width /2,SCREEN_HEIGHT/2+2*gameover_text_height, White);
+                    sprintf(str,"%d",my_board_instance.board_instance.max[2] );
+                    tumDrawText(str, SCREEN_WIDTH/2-gameover_text_width /2,SCREEN_HEIGHT/2+3*gameover_text_height, White);
+                    xSemaphoreGive(my_board_instance.lock);
+                }
                 xSemaphoreGive(ScreenLock);
-
-
-
-                vTaskDelay(100);
+                vTaskDelay(pdMS_TO_TICKS(10*TASK_DELAY));
             }
         }
     }
 }
 
-void vDrawLogo(void)
-{
-    static int image_height;
-    static int image_width;
-    if ((image_height = tumDrawGetLoadedImageHeight(logo_image)) != -1)
-    {
-        image_width=tumDrawGetLoadedImageWidth(logo_image);
-        tumDrawLoadedImage(logo_image, SCREEN_WIDTH -10 - image_width,
-                                     SCREEN_HEIGHT - 10 - image_height);
-    }
-                  
-    
-}
-
-struct U_args{
-    int i;
-    char List[10][50];
-  
-};
-
-
-
-
 void UDPHandler(size_t read_size, char *buffer, void *args)
 {
-    char Tetrimino[2];
-    char sList[50];
-    char Seed[50];
+    char Tetrimino;
+    char sList[STRING_WIDTH];
+    char Seed[STRING_WIDTH];
     char *M;
     
     struct U_args *my_args = (struct U_args * ) args;
@@ -1400,21 +1025,22 @@ void UDPHandler(size_t read_size, char *buffer, void *args)
     if (xSemaphoreTakeFromISR(HandleUDP, &xHigherPriorityTaskWoken1) ==
         pdTRUE) {
 
-        if(strncmp(buffer,"NEXT",4)==0)
+        if(strncmp(buffer,"NEXT",strlen("NEXT"))==0)
         {
-            Tetrimino[0]=buffer[5];
-            xQueueSendFromISR(ReceiveQueue,&Tetrimino,0);
+            Tetrimino=buffer[5];
+            xQueueSendFromISR(ReceiveQueue, &Tetrimino,0);
         }
-        if(strncmp(buffer,"SEED",4)==0)
+        if(strncmp(buffer,"SEED",strlen("SEED"))==0)
         {
             strcpy(Seed,buffer);
-            xQueueSendFromISR(SeedQueue,&Seed,0);
+            xQueueSendFromISR(SeedQueue, &Seed,0);
             
         }
-        if(strncmp(buffer,"LIST",4)==0)
+        if(strncmp(buffer,"LIST",strlen("LIST"))==0)
         {
             strcpy(sList,buffer);
             M= strtok(sList, "=,");
+            my_args->i=0;
             while(M!=NULL)
             {
                 strcpy(my_args->List[my_args->i],"MODE=");
@@ -1422,9 +1048,11 @@ void UDPHandler(size_t read_size, char *buffer, void *args)
                 M= strtok(NULL, ",");
             }
            for(int j=1;j<my_args->i;j++)
+           {
                 xQueueSendFromISR(ListQueue,&my_args->List[j],0);
+           }     
         }
-        if(strncmp(buffer,"MODE=",5)==0)
+        if(strncmp(buffer,"MODE=",strlen("MODE="))==0)
         {
             for(int j=0;j<my_args->i;j++)
             {
@@ -1433,22 +1061,22 @@ void UDPHandler(size_t read_size, char *buffer, void *args)
                     xQueueSendFromISR(ModeReceiveQueue,&my_args->List[j],0);
                 }
             }
-        }
-        
+        } 
         xSemaphoreGiveFromISR(HandleUDP, &xHigherPriorityTaskWoken3);
 
         /*portYIELD_FROM_ISR(xHigherPriorityTaskWoken1 |
                            xHigherPriorityTaskWoken2 |
                            xHigherPriorityTaskWoken3);*/
     }
-    else {
+    else 
+    {
         fprintf(stderr, "[ERROR] Overlapping UDPHandler call\n");
     }
 }
 void vUDPControlTask(void *pvParameters)
 {
-    static char send_value[50];
-    char List[10][50];
+    static char send_value[STRING_WIDTH];
+    char List[LIST_SIZE][STRING_WIDTH];
     int i=0;
     int j=0;
     int com_flag=0;
@@ -1460,25 +1088,17 @@ void vUDPControlTask(void *pvParameters)
 
     udp_soc_receive = aIOOpenUDPSocket(addr, port, UDP_BUFFER_SIZE, UDPHandler, (void *)&my_args);
 
-    
-    
-    //aIOSocketPut(UDP, NULL, UDP_TRANSMIT_PORT, "LIST",strlen("LIST"));
-    //aIOSocketPut(UDP, NULL, UDP_TRANSMIT_PORT, "MODE",strlen("MODE"));
-    //aIOSocketPut(UDP, NULL, UDP_TRANSMIT_PORT, "SEED",strlen("SEED"));
-
-
     while(1)
     {
-        //printf("udpcontrol task calisiyor\n");
         xSemaphoreTake(instance_two_player.lock,0);
         if(instance_two_player.flag==0)
         {
+            i=0;
             aIOSocketPut(UDP, NULL, UDP_TRANSMIT_PORT, "LIST",strlen("LIST"));
             aIOSocketPut(UDP, NULL, UDP_TRANSMIT_PORT, "MODE",strlen("MODE"));
             aIOSocketPut(UDP, NULL, UDP_TRANSMIT_PORT, "SEED",strlen("SEED"));
             instance_two_player.flag=4;
             com_flag=0;
-            //printf("1\n");
         }
         xSemaphoreGive(instance_two_player.lock);
         
@@ -1493,15 +1113,13 @@ void vUDPControlTask(void *pvParameters)
             xSemaphoreTake(instance_two_player.lock,0);
             instance_two_player.flag=2;
             xSemaphoreGive(instance_two_player.lock);
-            printf("comminucation yok\n");
         } 
         if (com_flag==2)
         {
             com_flag=3;
             xSemaphoreTake(instance_two_player.lock,0);
             instance_two_player.flag=3;
-            xSemaphoreGive(instance_two_player.lock);
-            printf("comminucation var\n");  
+            xSemaphoreGive(instance_two_player.lock); 
         } 
 
         if (xSemaphoreTake(buttons.lock, 0) == pdTRUE) {
@@ -1515,25 +1133,21 @@ void vUDPControlTask(void *pvParameters)
                 buttons.buttons[KEYCODE(T)] = 0;
                     aIOSocketPut(UDP, NULL, UDP_TRANSMIT_PORT, "RESET",strlen("RESET"));
             }
-           
             xSemaphoreGive(buttons.lock);
         }
-    
         if(xQueueReceive(SendQueue,&send_value,0)==pdTRUE)
         {
             aIOSocketPut(UDP, NULL, UDP_TRANSMIT_PORT, send_value,strlen(send_value));
         }
         vCheckConnectionTask();
-        vTaskDelay((TickType_t)50);
-        
-        
+        vTaskDelay(pdMS_TO_TICKS(5*TASK_DELAY));   
     }
 }
+
 void vMenuTask(void *pvParameters)
 {
-     char str[16];
+    char str[STRING_WIDTH];
 
-     
     while(1)
     {
         if (DrawSignal)
@@ -1549,7 +1163,7 @@ void vMenuTask(void *pvParameters)
                 static int image_height;
                 static int image_width;
                 image_height = tumDrawGetLoadedImageHeight(logo_image);
-                image_width = tumDrawGetLoadedImageWidth(logo_image);
+                image_width  = tumDrawGetLoadedImageWidth(logo_image);
                 
                 tumDrawLoadedImage(logo_image,  SCREEN_WIDTH - image_width -30,
                                      SCREEN_HEIGHT - image_height);
@@ -1558,11 +1172,12 @@ void vMenuTask(void *pvParameters)
                 if (xSemaphoreTake(buttons.lock, 0) == pdTRUE) {
                     if (buttons.buttons[KEYCODE(L)]) {
                         buttons.buttons[KEYCODE(L)] = 0;
-                       xSemaphoreTake(my_board_instance.lock,portMAX_DELAY);
-                        my_board_instance.board_instance.level=(my_board_instance.board_instance.level+1)%10;
-                        xSemaphoreGive(my_board_instance.lock);
-                    }
-                
+                        if(xSemaphoreTake(my_board_instance.lock,portMAX_DELAY)==pdTRUE)
+                        {
+                            my_board_instance.board_instance.level=(my_board_instance.board_instance.level+1)%10;
+                            xSemaphoreGive(my_board_instance.lock);
+                        }
+                    } 
                 xSemaphoreGive(buttons.lock);
                 }
             
@@ -1570,31 +1185,25 @@ void vMenuTask(void *pvParameters)
                 {
                     sprintf(str, "[L]evel: %d",  my_board_instance.board_instance.level);
                     tumDrawText(str,
-                        DEFAULT_FONT_SIZE * 10.5,
-                        DEFAULT_FONT_SIZE * 16.5, White);
-
+                        DEFAULT_FONT_SIZE * 10,
+                        DEFAULT_FONT_SIZE * 16, White);
                     xSemaphoreGive(my_board_instance.lock);
                 }
                 
                 tumDrawText("[O]ne Player",
-                    DEFAULT_FONT_SIZE * 10.5,
-                    DEFAULT_FONT_SIZE * 18.5, White);
+                    DEFAULT_FONT_SIZE * 10,
+                    DEFAULT_FONT_SIZE * 18, White);
 
                  tumDrawText("[T]wo Player",
-                    DEFAULT_FONT_SIZE * 10.5,
-                    DEFAULT_FONT_SIZE * 20.5, White);
+                    DEFAULT_FONT_SIZE * 10,
+                    DEFAULT_FONT_SIZE * 20, White);
             
-                vTaskDelay((TickType_t)100);
-
+                vTaskDelay(pdMS_TO_TICKS(10*TASK_DELAY));
                 xSemaphoreGive(ScreenLock);
                 vCheckStateInputMenu();
-            }
-         
+            }      
     }
 }
-
-#define FPS_AVERAGE_COUNT 50
-#define FPS_FONT "IBMPlexSans-Bold.ttf"
 
 void vDrawFPS(void)
 {
@@ -1650,66 +1259,20 @@ void vDrawFPS(void)
     tumFontPutFontHandle(cur_font);
 }
 
-int switch_color(int x)
-{
-    int color;
-    switch(x)
-    {
-        case 1:
-            color=Gray;
-            break;
-        case 2:
-            color=Red;
-            break;
-        case 3:
-            color=Yellow;
-            break;
-        case 4:
-            color=Green;
-            break;
-        case 5:
-            color=Cyan;
-            break;
-        case 6:
-            color=Blue;
-            break;
-        case 7:
-            color=Purple;
-            break;
-        case 8:
-            color=Pink;
-            break;
-        default:
-            break;
-    }
-    return color;
-}
+
 
 void vDemoTask(void *pvParameters)
 {
-    char str[16];
-    char Mode[50];
-    char Seed[50];
+    char str[STRING_WIDTH];
+    char Mode[STRING_WIDTH];
+    char Seed[STRING_WIDTH];
 
     unsigned int color;
-    
-    
-    Que_cond_Y= xQueueCreate(1,sizeof(int));
-    Que_cond_X_R= xQueueCreate(1,sizeof(int));
-    Que_cond_X_L= xQueueCreate(1,sizeof(int));
 
-    //YQueue=xQueueCreate(2,sizeof(int));
-    
-    my_struct_instance_grid.lock_grid=xSemaphoreCreateMutex();
-    my_struct_instance_frame.lock_frame=xSemaphoreCreateMutex();
-    my_struct_instance_shape.lock_shape=xSemaphoreCreateMutex();
-    my_struct_instance_tetri.lock_tetri=xSemaphoreCreateMutex();
-    my_struct_instance_Y.lock_Y=xSemaphoreCreateMutex();
-    //my_struct_instance_X.lock_X=xSemaphoreCreateMutex();
-    instance_next_shape.lock=xSemaphoreCreateMutex();
-    my_coord_instance.lock=xSemaphoreCreateMutex();
-    instance_block.lock=xSemaphoreCreateMutex();
-    
+    Que_cond_Y  = xQueueCreate(1,sizeof(int));
+    Que_cond_X_R= xQueueCreate(1,sizeof(int));
+    Que_cond_X_L= xQueueCreate(1,sizeof(int));  
+   
 
     xTaskCreate(Task, "Task", mainGENERIC_STACK_SIZE, NULL,mainGENERIC_PRIORITY+2, &HandleTask);
     vTaskResume(HandleTask);
@@ -1717,18 +1280,8 @@ void vDemoTask(void *pvParameters)
     vTaskResume(HandleUpdateY);
     xTaskCreate(UpdateX, "UpdateX", mainGENERIC_STACK_SIZE, NULL,mainGENERIC_PRIORITY, &HandleUpdateX);
     vTaskResume(HandleUpdateX);
-    //vTaskResume(HandleButtonTask);
-    //Signal_X_R= xSemaphoreCreateBinary();
-    //Signal_X_L= xSemaphoreCreateBinary();
+ 
     syncSignal= xSemaphoreCreateBinary();
-
-    // Needed such that Gfx library knows which thread controlls drawing
-    // Only one thread can call tumDrawUpdateScreen while and thread can call
-    // the drawing functions to draw objects. This is a limitation of the SDL
-    // backend.
-    //tumDrawBindThread();
-
-    
 
     while (1) {
         if (DrawSignal)
@@ -1740,45 +1293,43 @@ void vDemoTask(void *pvParameters)
                 xGetButtonInput(); // Update global input
                 xSemaphoreTake(ScreenLock, portMAX_DELAY);
 
-                tumDrawClear(White);
+                tumDrawClear(Silver);
         
                 if(xSemaphoreTake(my_struct_instance_frame.lock_frame,portMAX_DELAY)==pdTRUE)
                 {
-                    for(int i=0;i<12;i++)
+                    for(int i=0;i<GRID_X;i++)
                     {
-                        for(int j=0;j<23;j++)
+                        for(int j=2;j<GRID_Y;j++)
                         {
                             color=switch_color(my_struct_instance_frame.Frame[i][j]);
                             if(my_struct_instance_frame.Frame[i][j]!=0)
                             {
-                                 tumDrawFilledBox(20*i+200,20*j+20,20,20,color);
-                                tumDrawBox(20*i+200,20*j+20,20,20,Black);
+                                tumDrawFilledBox(BLOCK_SIZE*i+GRID_OFFSET_X,BLOCK_SIZE*j+GRID_OFFSET_Y,BLOCK_SIZE,BLOCK_SIZE,color);
+                                tumDrawBox(BLOCK_SIZE*i+GRID_OFFSET_X,BLOCK_SIZE*j+GRID_OFFSET_Y,BLOCK_SIZE,BLOCK_SIZE,Black);
                             }
                             else
-                                tumDrawFilledBox(20*i+200,20*j+20,20,20,White);
+                                tumDrawFilledBox(BLOCK_SIZE*i+GRID_OFFSET_X,BLOCK_SIZE*j+GRID_OFFSET_Y,BLOCK_SIZE,BLOCK_SIZE,White);
                         }
                     }
                 xSemaphoreGive(my_struct_instance_frame.lock_frame);
                 }
                 if(xSemaphoreTake(my_struct_instance_grid.lock_grid,portMAX_DELAY)==pdTRUE)
                 {   
-                    for(int i=0;i<12;i++)
+                    for(int i=0;i<GRID_X;i++)
                     {
-                        for(int j=0;j<23;j++)
+                        for(int j=2;j<GRID_Y;j++)
                         {
                             color=switch_color(my_struct_instance_grid.Grid[i][j]);
                             if(my_struct_instance_grid.Grid[i][j]!=0)
                             {
-                                tumDrawFilledBox(20*i+200,20*j+20,20,20,color);
-                                tumDrawBox(20*i+200,20*j+20,20,20,Black);
+                                tumDrawFilledBox(BLOCK_SIZE*i+GRID_OFFSET_X,BLOCK_SIZE*j+GRID_OFFSET_Y,BLOCK_SIZE,BLOCK_SIZE,color);
+                                tumDrawBox(BLOCK_SIZE*i+GRID_OFFSET_X,BLOCK_SIZE*j+GRID_OFFSET_Y,BLOCK_SIZE,BLOCK_SIZE,Black);
                             }
-                   
-                
                         }
                     }
                 xSemaphoreGive(my_struct_instance_grid.lock_grid);
                 }
-
+                /*
                 for(int i=12;i<20;i++)
                 {
                     for (int j=0;j<23;j++)
@@ -1787,102 +1338,103 @@ void vDemoTask(void *pvParameters)
                         tumDrawFilledBox(20*i-200,20*j+20,20,20,Silver);
                         tumDrawFilledBox(20*i-40,j+20,120,20,Silver);
                     }
-            
                 } 
-
+                */
                 for(int i=13;i<19;i++)
                 {
-                    xSemaphoreTake(instance_two_player.lock,portMAX_DELAY);
-                    if(instance_two_player.flag==1)
-                    {
-                        tumDrawFilledBox(20*i-200,20*5+20,20,20,White);
-                        tumDrawFilledBox(20*i-200,20*8+20,20,20,White);
-                    }
-                    xSemaphoreGive(instance_two_player.lock);
-                    tumDrawFilledBox(20*i+200,20*5+20,20,20,White);
-                    tumDrawFilledBox(20*i+200,20*8+20,20,20,White);
-                    tumDrawFilledBox(20*i+200,20*11+20,20,20,White);
+                    tumDrawFilledBox(BLOCK_SIZE*i+GRID_OFFSET_X,BLOCK_SIZE*5 +GRID_OFFSET_Y,BLOCK_SIZE,BLOCK_SIZE,White);
+                    tumDrawFilledBox(BLOCK_SIZE*i+GRID_OFFSET_X,BLOCK_SIZE*8 +GRID_OFFSET_Y,BLOCK_SIZE,BLOCK_SIZE,White);
+                    tumDrawFilledBox(BLOCK_SIZE*i+GRID_OFFSET_X,BLOCK_SIZE*11+GRID_OFFSET_Y,BLOCK_SIZE,BLOCK_SIZE,White);
                     for(int j=15; j<20;j++)
                     {
-                        tumDrawFilledBox(20*i+200,20*j+20,20,20,White);
+                        tumDrawFilledBox(BLOCK_SIZE*i+GRID_OFFSET_X,BLOCK_SIZE*j+GRID_OFFSET_Y,BLOCK_SIZE,BLOCK_SIZE,White);
                     }       
                 }
-
-                if(xSemaphoreTake(instance_next_shape.lock,portMAX_DELAY)==pdTRUE)
-                { 
-                    for(int i=0; i<6;i++)
-                    {
-                        for(int j=0; j<5; j++)
-                        {
-                            color=switch_color(instance_next_shape.NextShape[i][j]);
-                            if(instance_next_shape.NextShape[i][j]!=0)
-                            {
-
-                                tumDrawFilledBox(20*(i+13)+200,20*(j+15)+20,20,20,color);
-                                tumDrawBox(20*(i+13)+200,20*(j+15)+20,20,20,Black);
-                            }
-                        }
-                    }
-                xSemaphoreGive(instance_next_shape.lock);
-                }
-        
-                xSemaphoreTake(my_board_instance.lock,portMAX_DELAY);
-                sprintf(str, "LINES: %d", my_board_instance.board_instance.total_line);
-                tumDrawText(str, 20*13+210,20*5+20,Black);
-
-                sprintf(str, "LEVEL: %d", my_board_instance.board_instance.level);
-                tumDrawText(str, 20*13+210,20*8+20,Black);
-
-                sprintf(str, "SCORE: %d", my_board_instance.board_instance.score);
-                tumDrawText(str, 20*13+210,20*11+20,Black);
-                xSemaphoreGive(my_board_instance.lock);
-                
-
-                
-                tumDrawText("[E]xit [P]ause [R]estart", 50,20,Black);
-
-                tumDrawText("[->] Right",50,330,Black);
-                tumDrawText("[<-] Left",50,360,Black);
-                tumDrawText(" | ",57,385,Black);
-                tumDrawText("[ v ] Faster",50,390,Black);
-                tumDrawText("[A] Right Rotate",50,420,Black);
-                tumDrawText("[B] Left Rotate",50,450,Black);
 
                 xSemaphoreTake(instance_two_player.lock,portMAX_DELAY);
                 if(instance_two_player.flag==1)
                 {
+                    for(int i=13;i<22;i++)
+                    {   
+                            tumDrawFilledBox(BLOCK_SIZE*i-GRID_OFFSET_X-50,5*BLOCK_SIZE+GRID_OFFSET_Y,BLOCK_SIZE,BLOCK_SIZE,White);
+                            tumDrawFilledBox(BLOCK_SIZE*i-GRID_OFFSET_X-50,8*BLOCK_SIZE+GRID_OFFSET_Y,BLOCK_SIZE,BLOCK_SIZE,White);   
+                    }
+                }
+                xSemaphoreGive(instance_two_player.lock);
+
+                if(xSemaphoreTake(instance_next_shape.lock,portMAX_DELAY)==pdTRUE)
+                { 
+                    for(int i=0; i<SHAPE_X;i++)
+                    {
+                        for(int j=0; j<SHAPE_Y; j++)
+                        {
+                            color=switch_color(instance_next_shape.NextShape[i][j]);
+                            if(instance_next_shape.NextShape[i][j]!=0)
+                            {
+                                tumDrawFilledBox(BLOCK_SIZE*(i+13)+GRID_OFFSET_X,BLOCK_SIZE*(j+15)+GRID_OFFSET_Y,BLOCK_SIZE,BLOCK_SIZE,color);
+                                tumDrawBox(BLOCK_SIZE*(i+13)+GRID_OFFSET_X,BLOCK_SIZE*(j+15)+GRID_OFFSET_Y,BLOCK_SIZE,BLOCK_SIZE,Black);
+                            }
+                        }
+                    }
+                    xSemaphoreGive(instance_next_shape.lock);
+                }
+                
+                if(xSemaphoreTake(my_board_instance.lock,portMAX_DELAY)==pdTRUE)
+                {
+                    sprintf(str, "LINES: %d", my_board_instance.board_instance.total_line);
+                    tumDrawText(str, BLOCK_SIZE*13+GRID_OFFSET_X+10,5*BLOCK_SIZE+GRID_OFFSET_Y,Black);
+
+                    sprintf(str, "LEVEL: %d", my_board_instance.board_instance.level);
+                    tumDrawText(str, BLOCK_SIZE*13+GRID_OFFSET_X+10,8*BLOCK_SIZE+GRID_OFFSET_Y,Black);
+
+                    sprintf(str, "SCORE: %d", my_board_instance.board_instance.score);
+                    tumDrawText(str, BLOCK_SIZE*13+GRID_OFFSET_X+10,11*BLOCK_SIZE+GRID_OFFSET_Y,Black);
+                    xSemaphoreGive(my_board_instance.lock);
+                }
+                
+                tumDrawText("[E]xit [P]ause [R]estart", GRID_OFFSET_X-160,GRID_OFFSET_Y,Black);
+                tumDrawText("[->] Right"      ,GRID_OFFSET_X-160,19*BLOCK_SIZE,Black);
+                tumDrawText("[<-] Left"       ,GRID_OFFSET_X-160,20*BLOCK_SIZE,Black);
+                tumDrawText(" | "             ,GRID_OFFSET_X-153,21*BLOCK_SIZE-5,Black);
+                tumDrawText("[ v ] Faster"    ,GRID_OFFSET_X-160,21*BLOCK_SIZE,Black);
+                tumDrawText("[A] Right Rotate",GRID_OFFSET_X-160,22*BLOCK_SIZE,Black);
+                tumDrawText("[B] Left Rotate" ,GRID_OFFSET_X-160,23*BLOCK_SIZE,Black);
+
+                xSemaphoreTake(instance_two_player.lock,portMAX_DELAY);
+                if(instance_two_player.flag==1)
+                {
+                    tumDrawText("[M]ode", GRID_OFFSET_X-160 ,4*BLOCK_SIZE+GRID_OFFSET_Y,Black);
+
                     xQueueReceive(ModeReceiveQueue,&Mode,0);
                     sprintf(str, "%s", Mode);
-                    tumDrawText(str, 20*13-195,20*5+20,Black);
+                    tumDrawText(str, BLOCK_SIZE*13-GRID_OFFSET_X-40,5*BLOCK_SIZE+GRID_OFFSET_Y,Black);
+                    
 
                     xQueueReceive(SeedQueue,&Seed,0);
                     sprintf(str, "%s", Seed);
-                    tumDrawText(str, 20*13-195,20*8+20,Black);
+                    tumDrawText(str, BLOCK_SIZE*13-GRID_OFFSET_X-40,8*BLOCK_SIZE+GRID_OFFSET_Y,Black);
                 }
                 xSemaphoreGive(instance_two_player.lock);
                
-
-
                 //tumDrawUpdateScreen(); // Refresh the screen to draw string
                 vDrawFPS();
-        // Basic sleep of 1000 milliseconds
+                // Basic sleep of 1000 milliseconds
                 xSemaphoreGive(ScreenLock);
-
                 // Get input and check for state change
                 vCheckStateInputTask();
         
-                
-                vTaskDelay((TickType_t)10);
+                vTaskDelay(pdMS_TO_TICKS(TASK_DELAY));
             }
     }
 }
 
-static const char *paused_text = "PAUSED";
-static int paused_text_width;
-static int paused_text_height;
 
 void vPausedStateTask(void *pvParameters)
 {
+    static const char *paused_text = "PAUSED";
+    static int paused_text_width;
+    static int paused_text_height;
+
     tumGetTextSize((char *)paused_text, &paused_text_width, &paused_text_height);
     unsigned char next_state_signal;
     char str[16];
@@ -1907,7 +1459,7 @@ void vPausedStateTask(void *pvParameters)
 
                 // Don't suspend task until current execution loop has finished
                 // and held resources have been released
-                taskENTER_CRITICAL();
+                // taskENTER_CRITICAL();
                 
 
                 if (xSemaphoreTake(ScreenLock, 0) == pdTRUE) {
@@ -1920,46 +1472,44 @@ void vPausedStateTask(void *pvParameters)
                                 SCREEN_HEIGHT / 2, Red);
                 }
 
-                
-
-                  for(int i=13;i<19;i++)
+                for(int i=13;i<19;i++)
                 {
-                    tumDrawFilledBox(20*i+200,20*5+20,20,20,Silver);
-                    tumDrawFilledBox(20*i+200,20*8+20,20,20,Silver);
-                    tumDrawFilledBox(20*i+200,20*11+20,20,20,Silver);
-                         
+                    tumDrawFilledBox(BLOCK_SIZE*i+GRID_OFFSET_X,5*BLOCK_SIZE+GRID_OFFSET_Y,BLOCK_SIZE,BLOCK_SIZE,Silver);
+                    tumDrawFilledBox(BLOCK_SIZE*i+GRID_OFFSET_X,8*BLOCK_SIZE+GRID_OFFSET_Y,BLOCK_SIZE,BLOCK_SIZE,Silver);
+                    tumDrawFilledBox(BLOCK_SIZE*i+GRID_OFFSET_X,11*BLOCK_SIZE+GRID_OFFSET_Y,BLOCK_SIZE,BLOCK_SIZE,Silver);     
+                }
+                
+                if(xSemaphoreTake(my_board_instance.lock,portMAX_DELAY)==pdTRUE)
+                {
+                    sprintf(str, "LINES: %d", my_board_instance.board_instance.total_line);
+                    tumDrawText(str, SCREEN_WIDTH/2-paused_text_width /2,SCREEN_HEIGHT/2+2*paused_text_height,White);
+
+                    sprintf(str, "LEVEL: %d", my_board_instance.board_instance.level);
+                    tumDrawText(str, SCREEN_WIDTH/2-paused_text_width /2,SCREEN_HEIGHT/2+3*paused_text_height,White);
+
+                    sprintf(str, "SCORE: %d", my_board_instance.board_instance.score);
+                    tumDrawText(str, SCREEN_WIDTH/2-paused_text_width /2,SCREEN_HEIGHT/2+4*paused_text_height,White);
+                    xSemaphoreGive(my_board_instance.lock);
                 }
 
-            
-                
-                xSemaphoreTake(my_board_instance.lock,portMAX_DELAY);
-                sprintf(str, "LINES: %d", my_board_instance.board_instance.total_line);
-                tumDrawText(str, SCREEN_WIDTH/2-paused_text_width /2,SCREEN_HEIGHT/2+2*paused_text_height,White);
-
-                sprintf(str, "LEVEL: %d", my_board_instance.board_instance.level);
-                tumDrawText(str, SCREEN_WIDTH/2-paused_text_width /2,SCREEN_HEIGHT/2+3*paused_text_height,White);
-
-                sprintf(str, "SCORE: %d", my_board_instance.board_instance.score);
-                tumDrawText(str, SCREEN_WIDTH/2-paused_text_width /2,SCREEN_HEIGHT/2+4*paused_text_height,White);
-                xSemaphoreGive(my_board_instance.lock);
-
-                tumDrawText("[P]lay",50,20,Black);
+                tumDrawText("[P]lay",GRID_OFFSET_X-160,GRID_OFFSET_Y,Black);
 
                 xSemaphoreGive(ScreenLock);
 
-                taskEXIT_CRITICAL();
+                //taskEXIT_CRITICAL();
 
-                vTaskDelay(10);
+                vTaskDelay(pdMS_TO_TICKS(TASK_DELAY));
             }
         }
     }
 }
 
-static const char *connection_text = "NO CONNECTION";
-static int connection_text_width;
 
 void vNoConnectionTask(void *pvParameters)
 {
+    static const char *connection_text = "NO CONNECTION";
+    static int connection_text_width;
+
     tumGetTextSize((char *)connection_text, &connection_text_width, NULL);
     unsigned char next_state_signal;
 
@@ -1987,7 +1537,7 @@ void vNoConnectionTask(void *pvParameters)
 
                 // Don't suspend task until current execution loop has finished
                 // and held resources have been released
-                taskENTER_CRITICAL();
+                // taskENTER_CRITICAL();
 
                 if (xSemaphoreTake(ScreenLock, 0) == pdTRUE) {
                     tumDrawClear(Silver);
@@ -2000,23 +1550,42 @@ void vNoConnectionTask(void *pvParameters)
                     xSemaphoreGive(ScreenLock);
                 }
 
-                tumDrawText("[E]xit",50,20,Black);
+                tumDrawText("[E]xit",GRID_OFFSET_X-160,GRID_OFFSET_Y,Black);
                 xSemaphoreGive(DrawSignal);
-                taskEXIT_CRITICAL();
-
-                vTaskDelay(10);
+                //taskEXIT_CRITICAL();
+                vCheckConnectionTask();
+                vTaskDelay(pdMS_TO_TICKS(TASK_DELAY));
             }
         }
     }
 }
+
+void vDrawLogo(void)
+{
+    static int image_height;
+    static int image_width;
+    if ((image_height = tumDrawGetLoadedImageHeight(logo_image)) != -1)
+    {
+        image_width=tumDrawGetLoadedImageWidth(logo_image);
+        tumDrawLoadedImage(logo_image, SCREEN_WIDTH -10 - image_width,
+                                        SCREEN_HEIGHT - 10 - image_height);
+    }    
+}
+
 int main(int argc, char *argv[])
 {
     char *bin_folder_path = tumUtilGetBinFolderPath(argv[0]);
 
     my_board_instance.lock=xSemaphoreCreateMutex();
-   
-
-
+    my_struct_instance_grid.lock_grid=xSemaphoreCreateMutex();
+    my_struct_instance_frame.lock_frame=xSemaphoreCreateMutex();
+    my_struct_instance_shape.lock_shape=xSemaphoreCreateMutex();
+    my_struct_instance_tetri.lock_tetri=xSemaphoreCreateMutex();
+    my_struct_instance_Y.lock=xSemaphoreCreateMutex();
+    my_coord_instance.lock=xSemaphoreCreateMutex();
+    instance_next_shape.lock=xSemaphoreCreateMutex();
+    instance_block.lock=xSemaphoreCreateMutex();
+    
     printf("Initializing: ");
 
     if (tumDrawInit(bin_folder_path)) {
@@ -2063,11 +1632,11 @@ int main(int argc, char *argv[])
         goto err_state_queue;
     }
 
-    SendQueue= xQueueCreate(20, 20*sizeof(unsigned char));
-    ReceiveQueue= xQueueCreate(20, 20*sizeof(unsigned char));
-    ModeReceiveQueue= xQueueCreate(20, 20*sizeof(unsigned char));
-    ListQueue= xQueueCreate(20, 20*sizeof(unsigned char));
-    SeedQueue= xQueueCreate(20, 20*sizeof(unsigned char));
+    SendQueue       = xQueueCreate(QUEUE_SIZE, QUEUE_WIDTH*sizeof(unsigned char));
+    ReceiveQueue    = xQueueCreate(QUEUE_SIZE, QUEUE_WIDTH*sizeof(unsigned char));
+    ModeReceiveQueue= xQueueCreate(QUEUE_SIZE, QUEUE_WIDTH*sizeof(unsigned char));
+    ListQueue       = xQueueCreate(QUEUE_SIZE, QUEUE_WIDTH*sizeof(unsigned char));
+    SeedQueue       = xQueueCreate(QUEUE_SIZE, QUEUE_WIDTH*sizeof(unsigned char));
 
     instance_two_player.lock=xSemaphoreCreateMutex();
     logo_image= tumDrawLoadScaledImage(LOGO_FILENAME,0.7);
@@ -2115,6 +1684,7 @@ int main(int argc, char *argv[])
     xTaskCreate(vUDPControlTask, "UDPControlTask",
                     mainGENERIC_STACK_SIZE*2, NULL, mainGENERIC_PRIORITY+2,
                     &UDPControlTask);
+
     vTaskSuspend(UDPControlTask);
     vTaskSuspend(NoConnectionTask);
     vTaskSuspend(PausedStateTask);
